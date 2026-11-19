@@ -442,10 +442,20 @@ function layout(c){
     }
     if(l.att) add([{t:'Атест. '+dm(l.date),k:'att'},{t:'',k:'reta'}]);   // атестація й чиста колонка для перездачі
   });
-  let end=[{t:'Сем.',k:'fin'},{t:'',k:'ret'}]; if(c.exam) end=end.concat([{t:'Іспит',k:'fin'},{t:'',k:'ret'}]); end.push({t:'П',k:'fin'});
-  add(end); flush();
+  add(endCols(c)); flush();
   return {spreads,COLS};
 }
+/* Кінець журналу: «Сем.» і перездача; якщо дисципліна продовжується в наступному семестрі — лише вони.
+   Інакше ще [Іспит, перездача], [РР], [КР] і підсумкова «П». */
+function endCols(c){
+  const end=[{t:'Сем.',k:'fin'},{t:'',k:'ret'}];
+  if(!c.continues && c.exam) end.push({t:'Іспит',k:'fin'},{t:'',k:'ret'});
+  if(c.rr) end.push({t:'РР',k:'fin'});
+  if(c.kr) end.push({t:'КР',k:'fin'});
+  if(!c.continues) end.push({t:'П',k:'fin'});
+  return end;
+}
+function endText(c){ return endCols(c).map(x=>x.t?'«'+x.t+'»':'перездача').join(', '); }
 function spreadHTML(c,s,i,COLS){
   let h='<div class="spread"><h3>Розворот '+i+'</h3><div class="lp"><table><tr>';
   for(let k=0;k<COLS;k++){ const x=s.cols[k]; if(x){ const txt=x.t||'перездача'; const cl=x.k==='reta'?'reta ret':x.k; h+='<td class="'+cl+'"><div>'+esc(txt)+(x.w?'<b class="wn">'+esc(x.w)+'</b>':'')+'</div></td>'; } else h+='<td><div></div></td>'; }
@@ -696,19 +706,58 @@ function bindRec(v,c){
 function renderLayout(v,c){
   const {spreads,COLS}=layout(c);
   let h='<div class="panel"><div class="row" style="justify-content:space-between"><div><h2>Розкладка журналу · '+esc(c.title)+'</h2><div class="sub">Розворотів: '+spreads.length+' · '+COLS+' колонок на лівій сторінці, до '+(c.rows||20)+' рядків на правій</div></div>'+
-    ((downloads||local)?'<button class="b pri" id="dl">Зберегти для друку</button>':'')+'</div>'+
+    ((downloads||local)?'<button class="b pri" id="dl">Зберегти PDF для друку</button>':'')+'</div>'+
     '<div class="legend"><span>дата</span><span style="background:var(--work)">'+(workStyle(c)==='above'?'день з роботою':'колонка роботи')+'</span><span style="background:var(--att)">атестація / перездача</span><span style="background:var(--fin)">підсумкові</span><span style="background:var(--plan)">ще за планом</span></div>'+
-    '<div class="note">'+(workStyle(c)==='above'?'Практичне чи лабораторне займає одну колонку: номер роботи над датою, оцінка в клітинці того ж дня.':'Практичне чи лабораторне займає дві колонки: дату й наступну, де замість дати номер роботи.')+' Атестація стоїть окремою колонкою «Атест.» одразу після дня, на якому її виставляли, і за нею чиста колонка для перездачі; у кінці «Сем.», перездача'+(c.exam?', «Іспит», перездача':'')+' і «П». Заняття, яке не влазить, переходить на наступний розворот.</div></div>';
+    '<div class="note">'+(workStyle(c)==='above'?'Практичне чи лабораторне займає одну колонку: номер роботи над датою, оцінка в клітинці того ж дня.':'Практичне чи лабораторне займає дві колонки: дату й наступну, де замість дати номер роботи.')+' Атестація стоїть окремою колонкою «Атест.» одразу після дня, на якому її виставляли, і за нею чиста колонка для перездачі; у кінці '+endText(c)+'. Заняття, яке не влазить, переходить на наступний розворот.</div></div>';
   h+=spreads.map((s,i)=>spreadHTML(c,s,i+1,COLS)).join('');
   v.innerHTML=h;
   const b=$('#dl'); if(b) b.addEventListener('click',()=>saveLayout(c));
 }
+/* PDF для друку: A4 альбомна, один розворот журналу на сторінку, чорне на білому незалежно від теми */
+async function loadPdfLibs(){
+  if(!window.jspdf) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  if(!(window.pdfMake&&window.pdfMake.vfs)) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js');   // Roboto з кирилицею
+}
+async function layoutPDF(c){
+  await loadPdfLibs();
+  const doc=new window.jspdf.jsPDF({orientation:'landscape',unit:'mm',format:'a4'}); const vfs=window.pdfMake.vfs;
+  [['Roboto-Regular.ttf','normal'],['Roboto-Medium.ttf','bold'],['Roboto-Italic.ttf','italic']].forEach(([f,st])=>{doc.addFileToVFS(f,vfs[f]);doc.addFont(f,'Roboto',st);});
+  doc.setFont('Roboto','normal'); doc.setTextColor(0); doc.setDrawColor(0); doc.setLineWidth(0.2);
+  const {spreads,COLS}=layout(c); const ROWS=Number(c.rows)||20, M=8, W=297, H=210, MID=W/2, top=M+8;
+  const cell=(x,y,w,h)=>doc.rect(x,y,w,h);
+  spreads.forEach((s,si)=>{
+    if(si) doc.addPage();
+    doc.setFont('Roboto','bold'); doc.setFontSize(10); doc.text(c.title+' · '+c.groups,M,M+3);
+    doc.setFont('Roboto','normal'); doc.setFontSize(8); doc.text('Розворот '+(si+1)+' з '+spreads.length,MID-4,M+3,{align:'right'}); doc.text('Права сторінка',MID+4,M+3);
+    // ліва сторінка: шапка з вертикальними датами, номери колонок і порожні рядки для студентів
+    const lw=MID-4-M, cw=lw/COLS, hh=34, nh=4.5;
+    for(let k=0;k<COLS;k++){ const x=M+k*cw, it=s.cols[k]; cell(x,top,cw,hh); cell(x,top+hh,cw,nh);
+      doc.setFontSize(6.5); doc.text(String(k+1),x+cw/2,top+hh+3.2,{align:'center'});
+      if(it){ const txt=it.t||'перездача'; const strong=/fin|att/.test(it.k), work=/work/.test(it.k)&&!it.w;
+        doc.setFont('Roboto',it.t?(strong||work?'bold':'normal'):'italic'); doc.setFontSize(it.t?8:7);
+        doc.text(txt,x+cw/2+1.3,top+hh-2,{angle:90});
+        if(it.w){ doc.setFont('Roboto','bold'); doc.text(it.w,x+cw/2+1.3,top+hh-2-doc.getTextWidth(txt)-2.5,{angle:90}); }
+        doc.setFont('Roboto','normal'); } }
+    const sy=top+hh+nh, rh=5.2; for(let y=sy;y+rh<=H-M+0.01;y+=rh) for(let k=0;k<COLS;k++) cell(M+k*cw,y,cw,rh);
+    // права сторінка: №, дата, години, тема, ДЗ
+    const x0=MID+4, cols=[['№',8],['Дата',13],['Год',8],['Тема',0],['ДЗ',38]]; const free=W-M-x0-cols.reduce((a,b)=>a+b[1],0); cols[3][1]=free;
+    const th=6, rH=(H-M-top-th)/ROWS; let x=x0; doc.setFont('Roboto','bold'); doc.setFontSize(8);
+    cols.forEach(([t,w])=>{cell(x,top,w,th);doc.text(t,x+1.2,top+4.2);x+=w;}); doc.setFont('Roboto','normal');
+    for(let r=0;r<ROWS;r++){ const y=top+th+r*rH, row=s.rows[r]; x=x0;
+      cols.forEach(([t,w],ci)=>{ cell(x,y,w,rH); if(row){ const v=[row.n,row.date,c.hours||2,row.topic,row.hw][ci]; let fs=7.5; doc.setFontSize(fs);
+          let lines=doc.splitTextToSize(String(v==null?'':v),w-2); const maxL=Math.max(1,Math.floor((rH-1)/2.9));
+          while(lines.length>maxL&&fs>5.5){fs-=0.5;doc.setFontSize(fs);lines=doc.splitTextToSize(String(v),w-2);}
+          if(lines.length>maxL){lines=lines.slice(0,maxL);lines[maxL-1]=lines[maxL-1].replace(/.{0,2}$/,'…');}
+          doc.text(lines,x+1,y+Math.min(rH/2+1.2,3.3)-(lines.length>1?0.6*(lines.length-1)*0:0)); } x+=w; }); }
+  });
+  return doc.output('blob');
+}
 async function saveLayout(c){
-  const {spreads,COLS}=layout(c);
-  const css=document.querySelector('style').textContent;
-  const doc='<!doctype html><html lang="uk"><head><meta charset="utf-8"><title>Журнал — '+esc(c.title)+'</title><style>'+css+'@page{size:A4 landscape;margin:8mm}@media print{.spread{break-after:page}}</style></head><body><div class="wrap"><h1>'+esc(c.title)+' · '+esc(c.groups)+'</h1>'+spreads.map((s,i)=>spreadHTML(c,s,i+1,COLS)).join('')+'</div></body></html>';
-  const r=await saveFile('zhurnal_'+(c.short||c.id)+'.html',doc,'text/html');
-  if(r==='saved') toast('Файл збережено. Відкрийте його в браузері й надрукуйте.'); else if(r===null) toast('Файл не збережено');
+  const b=$('#dl'); if(b){b.disabled=true;b.textContent='Готую PDF…';}
+  try{ const blob=await layoutPDF(c); const r=await saveFile('zhurnal_'+(c.short||c.title).replace(/[^\wа-яіїєґ-]+/gi,'_')+'.pdf',blob,'application/pdf');
+    if(r==='saved') toast('PDF збережено. Друкуйте на A4 альбомно, без масштабування.'); else if(r===null) toast('Файл не збережено'); }
+  catch(e){ toast('Не вдалося створити PDF: '+((e&&e.message)||'помилка')); }
+  if(b){b.disabled=false;b.textContent='Зберегти PDF для друку';}
 }
 
 /* ----- Дисципліна ----- */
@@ -717,7 +766,7 @@ function renderCourse(v,c){
   const cb=(id,label,on)=>'<label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="'+id+'"'+(on?' checked':'')+'> '+label+'</label>';
   const own=(c.semStart&&c.semStart!==settings.semStart)||(c.semEnd&&c.semEnd!==settings.semEnd)||(c.parityRef&&c.parityRef!==settings.parityRef)||(c.parityRefIs&&c.parityRefIs!==settings.parityRefIs);
   let h='<div class="panel"><h2>'+esc(c.title)+' · '+esc(c.groups)+'</h2>'+
-   '<div class="sec"><h3>Основне</h3><div class="grid2">'+fld('c-title','Назва',c.title)+fld('c-groups','Групи',c.groups)+cb('c-exam','Є іспит (у журналі додаються колонки «Іспит» і перездача)',c.exam)+'</div></div>'+
+   '<div class="sec"><h3>Основне</h3><div class="grid2">'+fld('c-title','Назва',c.title)+fld('c-groups','Групи',c.groups)+cb('c-cont','Продовжується в наступному семестрі: зараз лише семестрова, без іспиту й «П»',c.continues)+cb('c-exam','Іспит (колонки «Іспит» і перездача)',c.exam)+cb('c-rr','Розрахункова робота (колонка «РР» перед «П»)',c.rr)+cb('c-kr','Курсова робота (колонка «КР» перед «П»)',c.kr)+'</div></div>'+
    '<div class="sec"><h3>Розклад пар</h3><div class="sched" id="sched"></div><div><button class="b" id="addSched">+ Рядок розкладу</button></div></div>'+
    '<div class="sec"><h3>Тематичний план</h3>'+tool('t-syl','Заповнити план із силабусу',sylToolHTML(c))+
    '<div class="note">Один рядок — одне заняття: <span class="mono">позначка | тема | ДЗ</span>. Позначка: Л — лекція, Т — тест, ПЗ1 / ЛР1 / ІЗ — робота з окремою колонкою оцінки. Майбутні пари беруть теми з плану по черзі.</div>'+
@@ -741,7 +790,7 @@ function renderCourse(v,c){
     c.title=$('#c-title').value.trim()||'Без назви'; c.groups=$('#c-groups').value.trim(); c.short=$('#c-short').value.trim();
     c.semStart=$('#c-start').value; c.semEnd=$('#c-end').value;
     c.workStyle=$('#c-ws').value; c.cols=Number($('#c-cols').value)||18; c.rows=Number($('#c-rows').value)||20; c.hours=Number($('#c-hours').value)||2;
-    c.parityRef=$('#c-pref').value||settings.parityRef; c.parityRefIs=$('#c-pis').value; c.exam=$('#c-exam').checked; c.schedule=sched;
+    c.parityRef=$('#c-pref').value||settings.parityRef; c.parityRefIs=$('#c-pis').value; c.exam=$('#c-exam').checked; c.continues=$('#c-cont').checked; c.rr=$('#c-rr').checked; c.kr=$('#c-kr').checked; c.schedule=sched;
     const oldPlan=JSON.stringify(c.plan||[]);
     c.plan=$('#c-plan').value.split('\n').map(s=>s.trim()).filter(Boolean).map(s=>{const p=s.split('|').map(x=>x.trim());return {label:p[0]||'Л',title:p[1]||p[0],hw:p[2]||''};});
     if(JSON.stringify(c.plan)!==oldPlan) reflow(c);
