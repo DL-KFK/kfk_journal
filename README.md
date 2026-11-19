@@ -9,6 +9,6 @@
 
 Записи зберігаються лише у вашому браузері. Регулярно завантажуйте резервну копію («Налаштування» → «Резервна копія»): нею ж переносять журнал на інший комп'ютер.
 
-`kfk_rozklad.json` — знімок розкладу з https://kfk.sumdu.edu.ua/studentu/rozklad-dlia-vykladacha-koledzhu/. Його щопонеділка оновлює GitHub Actions (`.github/workflows/rozklad.yml`, скрипт `update_rozklad.py`), а вручну — вкладка Actions → «Оновити розклад викладачів» → Run workflow.
+`kfk_rozklad.json` — знімок розкладу з https://kfk.sumdu.edu.ua/studentu/rozklad-dlia-vykladacha-koledzhu/. Його раз на місяць оновлює GitHub Actions (`.github/workflows/rozklad.yml`, скрипт `update_rozklad.py`), а вручну — вкладка Actions → «Оновити розклад викладачів» → Run workflow.
 
 Сторінка збирається з `head.html`, `parsers.js` і `main.js` командою `python3 build.py` (робоча тека автора).

@@ -706,12 +706,12 @@ function bindRec(v,c){
 function renderLayout(v,c){
   const {spreads,COLS}=layout(c);
   let h='<div class="panel"><div class="row" style="justify-content:space-between"><div><h2>Розкладка журналу · '+esc(c.title)+'</h2><div class="sub">Розворотів: '+spreads.length+' · '+COLS+' колонок на лівій сторінці, до '+(c.rows||20)+' рядків на правій</div></div>'+
-    ((downloads||local)?'<button class="b pri" id="dl">Зберегти PDF для друку</button>':'')+'</div>'+
+    ((downloads||local)?'<button class="b pri" id="dl">Зберегти PDF для друку</button>':'')+'</div><div class="sub" id="dl-st" role="status" aria-live="polite"></div>'+
     '<div class="legend"><span>дата</span><span style="background:var(--work)">'+(workStyle(c)==='above'?'день з роботою':'колонка роботи')+'</span><span style="background:var(--att)">атестація / перездача</span><span style="background:var(--fin)">підсумкові</span><span style="background:var(--plan)">ще за планом</span></div>'+
     '<div class="note">'+(workStyle(c)==='above'?'Практичне чи лабораторне займає одну колонку: номер роботи над датою, оцінка в клітинці того ж дня.':'Практичне чи лабораторне займає дві колонки: дату й наступну, де замість дати номер роботи.')+' Атестація стоїть окремою колонкою «Атест.» одразу після дня, на якому її виставляли, і за нею чиста колонка для перездачі; у кінці '+endText(c)+'. Заняття, яке не влазить, переходить на наступний розворот.</div></div>';
   h+=spreads.map((s,i)=>spreadHTML(c,s,i+1,COLS)).join('');
   v.innerHTML=h;
-  const b=$('#dl'); if(b) b.addEventListener('click',()=>saveLayout(c));
+  const b=$('#dl'); if(b){ b.addEventListener('click',()=>saveLayout(c)); loadPdfLibs().catch(()=>{}); }   // бібліотеки заздалегідь: клік одразу дає файл
 }
 /* PDF для друку: A4 альбомна, один розворот журналу на сторінку, чорне на білому незалежно від теми */
 async function loadPdfLibs(){
@@ -750,13 +750,24 @@ async function layoutPDF(c){
           if(lines.length>maxL){lines=lines.slice(0,maxL);lines[maxL-1]=lines[maxL-1].replace(/.{0,2}$/,'…');}
           doc.text(lines,x+1,y+Math.min(rH/2+1.2,3.3)-(lines.length>1?0.6*(lines.length-1)*0:0)); } x+=w; }); }
   });
-  return doc.output('blob');
+  return doc.output('arraybuffer');   // ArrayBuffer передається в будь-якому клієнті claude.ai надійніше за Blob
 }
 async function saveLayout(c){
-  const b=$('#dl'); if(b){b.disabled=true;b.textContent='Готую PDF…';}
-  try{ const blob=await layoutPDF(c); const r=await saveFile('zhurnal_'+(c.short||c.title).replace(/[^\wа-яіїєґ-]+/gi,'_')+'.pdf',blob,'application/pdf');
-    if(r==='saved') toast('PDF збережено. Друкуйте на A4 альбомно, без масштабування.'); else if(r===null) toast('Файл не збережено'); }
-  catch(e){ toast('Не вдалося створити PDF: '+((e&&e.message)||'помилка')); }
+  const b=$('#dl'); const st=$('#dl-st'); const say=t=>{ if(st) st.textContent=t; };
+  if(b){b.disabled=true;b.textContent='Готую PDF…';} say('');
+  const name='zhurnal_'+(c.short||c.title).replace(/[^\wа-яіїєґ-]+/gi,'_')+'.pdf';
+  try{
+    const buf=await layoutPDF(c);
+    if(downloads){
+      try{ const r=await downloads.save({filename:name,data:buf});
+        say(r&&r.status==='delivered'?'Файл передано туди, куди ви обрали.':'Файл '+name+' збережено в завантаження браузера. Друкуйте на A4 альбомно, без масштабування.'); }
+      catch(e){ const code=e&&e.code||'помилка'; say(code==='declined'||code==='cancelled'?'Збереження скасовано.':'Браузер не зберіг файл ('+code+'). Спробуйте ще раз або відкрийте журнал на https://dl-kfk.github.io/kfk_journal/ через резервну копію.'); }
+    } else {
+      const url=URL.createObjectURL(new Blob([buf],{type:'application/pdf'}));
+      const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+      if(st) st.innerHTML='Файл '+esc(name)+' має з\'явитися в завантаженнях. Якщо його немає — <a href="'+url+'" target="_blank" rel="noopener">відкрийте PDF</a> і збережіть або надрукуйте з переглядача.';
+    }
+  }catch(e){ say('Не вдалося створити PDF: '+((e&&e.message)||'помилка')+'. Перевірте з\'єднання з інтернетом: бібліотеки PDF вантажаться з cdnjs.'); }
   if(b){b.disabled=false;b.textContent='Зберегти PDF для друку';}
 }
 
