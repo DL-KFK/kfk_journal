@@ -84,7 +84,7 @@ td.ret div{color:var(--mut);font-style:italic}
 .note{color:var(--mut);font-size:13px;max-width:70ch}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--sheet);padding:8px 14px;border-radius:8px;font-size:13px;z-index:20}
 .sched{display:flex;flex-direction:column;gap:6px}
-.sched .r{display:grid;grid-template-columns:8rem 6rem 9rem auto;gap:6px}
+.sched .r{display:grid;grid-template-columns:10rem 7rem 9rem max-content;gap:6px}
 details.tool{border:1px solid var(--rule);border-radius:8px;padding:10px 12px;background:var(--paper)}
 details.tool>summary{cursor:pointer;font:700 14px var(--f-head)}
 details.tool[open]>summary{margin-bottom:10px}
@@ -102,6 +102,17 @@ details.tool .tbody{display:flex;flex-direction:column;gap:10px}
 form.mv{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:6px 0 10px 2.4rem;border-bottom:1px solid var(--rule2)}
 .cl{display:grid;grid-template-columns:auto minmax(0,1.4fr) minmax(0,1fr);gap:10px;align-items:center;border-bottom:1px solid var(--rule2);padding:8px 0}
 a{color:var(--accent)}
+.subtabs{display:flex;gap:6px;flex-wrap:wrap}
+.subtabs button{background:none;border:1px solid transparent;border-radius:6px;padding:5px 10px;font:600 13px var(--f-body);color:var(--mut);cursor:pointer}
+.subtabs button[aria-current="page"]{color:var(--ink);background:var(--sheet);border-color:var(--rule)}
+[hidden]{display:none!important}
+.foot{color:var(--mut);font-size:12px;line-height:1.5;border-top:1px solid var(--rule);padding-top:12px;max-width:80ch}
+.about{display:flex;flex-direction:column;gap:8px;font-size:13px;max-width:72ch}.about p{margin:0}
+.todo{display:flex;flex-direction:column}
+.todo>div{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--rule2);padding:6px 0}
+.sec{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--rule2);padding-top:12px}
+.danger{display:flex;justify-content:flex-end;border-top:1px solid var(--rule2);padding-top:12px}
+
 .empty .start{display:flex;flex-direction:column;gap:6px;width:min(100%,30rem);text-align:left}
 label.f.who{font-size:13px;color:var(--ink);font-weight:600}
 label.f.who select{font-size:15px;padding:9px 10px}
@@ -128,14 +139,18 @@ details.tool.inner{background:var(--sheet)}
 
   <nav class="tabs" role="tablist" aria-label="Розділи">
     <button role="tab" id="t-today" aria-selected="true">Сьогодні</button>
-    <button role="tab" id="t-lessons" aria-selected="false">Проведені пари</button>
-    <button role="tab" id="t-layout" aria-selected="false">Розкладка журналу</button>
-    <button role="tab" id="t-course" aria-selected="false">Дисципліна</button>
+    <button role="tab" id="t-courses" aria-selected="false">Дисципліни</button>
     <button role="tab" id="t-settings" aria-selected="false">Налаштування</button>
   </nav>
 
-  <div class="chips" id="courseChips"></div>
+  <div class="chips" id="courseChips" hidden></div>
+  <nav class="subtabs" id="subnav" aria-label="Дисципліна" hidden>
+    <button id="u-lessons" aria-current="page">Пари</button>
+    <button id="u-layout">Журнал для друку</button>
+    <button id="u-course">План і розклад</button>
+  </nav>
   <main id="view"></main>
+  <footer class="foot" id="foot"></footer>
 </div>
 
 <script id="zh-parsers">
@@ -421,22 +436,29 @@ function spreadHTML(c,s,i,COLS){
 }
 
 /* ---------- views ---------- */
-const TABS=['today','lessons','layout','course','settings'];
-function setTab(t){tab=t;TABS.forEach(x=>$('#t-'+x).setAttribute('aria-selected',String(x===t)));render();}
+const TABS=['today','courses','settings'], SUBS=['lessons','layout','course'];
+let sub='lessons';
+/* setTab('lessons'|'layout'|'course') = розділ «Дисципліни» з відповідним підрозділом */
+function setTab(t,s){ if(SUBS.includes(t)){s=t;t='courses';} tab=t; if(s) sub=s;
+  TABS.forEach(x=>$('#t-'+x).setAttribute('aria-selected',String(x===tab)));
+  SUBS.forEach(x=>{const b=$('#u-'+x); if(x===sub) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');});
+  renderChips(); render(); }
 TABS.forEach(x=>$('#t-'+x).addEventListener('click',()=>setTab(x)));
+SUBS.forEach(x=>$('#u-'+x).addEventListener('click',()=>setTab('courses',x)));
 function tool(id,title,body){return '<details class="tool" id="'+id+'"'+(openTools.has(id)?' open':'')+'><summary>'+title+'</summary><div class="tbody">'+body+'</div></details>';}
 function bindTools(v){v.querySelectorAll('details.tool').forEach(d=>d.addEventListener('toggle',()=>{d.open?openTools.add(d.id):openTools.delete(d.id);}));}
-function goTool(t,id){openTools.add(id);setTab(t);const el=document.getElementById(id);if(el&&el.scrollIntoView)el.scrollIntoView({block:"start"});}
+function goTool(t,id){openTools.add(id);setTab(t,SUBS.includes(t)?t:undefined);const el=document.getElementById(id);if(el&&el.scrollIntoView)el.scrollIntoView({block:"start"});}
 
 function renderChips(){
-  const el=$('#courseChips');
+  const el=$('#courseChips'); const show=tab==='courses'&&order.length>0;
+  el.hidden=!show; $('#subnav').hidden=!show;
   if(!order.length){el.innerHTML='';return;}
   el.innerHTML=order.map(id=>'<button class="chip" data-c="'+id+'" aria-pressed="'+(id===cur)+'">'+esc(courses[id].title)+' · '+esc(courses[id].groups)+'</button>').join('')+'<button class="chip" id="newCourse">+ Дисципліна</button>';
-  el.querySelectorAll('[data-c]').forEach(b=>b.addEventListener('click',()=>{cur=b.dataset.c;try{localStorage.setItem('zh_cur',cur);}catch(e){}renderChips();if(tab==='today'||tab==='settings')setTab('lessons');else render();}));
+  el.querySelectorAll('[data-c]').forEach(b=>b.addEventListener('click',()=>{cur=b.dataset.c;try{localStorage.setItem('zh_cur',cur);}catch(e){}if(tab!=='courses')setTab('courses');else{renderChips();render();}}));
   $('#newCourse').addEventListener('click',createCourse);
 }
 function render(){
-  const v=$('#view');
+  const v=$('#view'); $('#foot').innerHTML=footHTML();
   if(!booted){ v.innerHTML='<div class="empty"><h2>Завантажую ваші дисципліни</h2><div class="note">Тут з\'являться пари на сьогодні, облік проведених занять і розкладка паперового журналу.</div></div>'; return; }
   if(!local&&!db){ v.innerHTML='<div class="empty"><h2>Сховище недоступне</h2><div>Відкрийте сторінку, увійшовши в claude.ai: записи зберігаються у вашому приватному розділі.</div></div>'; return; }
   if(!uid){ v.innerHTML='<div class="empty"><h2>Потрібен вхід</h2><div>Записи кожного викладача приватні, тому сторінка працює лише після входу.</div></div>'; return; }
@@ -444,9 +466,9 @@ function render(){
   if(!order.length){ v.innerHTML=emptyHTML(); bindEmpty(); return; }
   if(tab==='today') return renderToday(v);
   const c=courses[cur]; if(!c){cur=order[0];return render();}
-  if(tab==='lessons') return renderLessons(v,c);
-  if(tab==='layout') return renderLayout(v,c);
-  if(tab==='course') return renderCourse(v,c);
+  if(sub==='lessons') return renderLessons(v,c);
+  if(sub==='layout') return renderLayout(v,c);
+  return renderCourse(v,c);
 }
 function emptyHTML(){
   return '<div class="empty"><h2>Почнімо з вашого розкладу</h2>'+(kfk?'<div class="start">'+teacherSelectHTML('e-who')+'<div class="sub">Розклад коледжу станом на '+fetchedText()+'. Ви побачите свої дисципліни й зможете їх виправити перед створенням.</div></div>':'')+
@@ -458,6 +480,21 @@ function emptyHTML(){
 function bindEmpty(){ const w=$('#e-who'); if(w) w.addEventListener('change',()=>{ if(!w.value) return; pickTeacher(w.value); goTool('settings','t-sched'); });
   $('#e-new').addEventListener('click',createCourse); $('#e-sched').addEventListener('click',()=>goTool('settings','t-sched')); const im=$('#e-import'); if(im) im.addEventListener('click',importSeed); }
 
+/* ----- дисклеймер ----- */
+function footHTML(){
+  return 'Розклад викладачів і посилання на заміни взято з сайту <a href="https://kfk.sumdu.edu.ua/" target="_blank" rel="noopener">КФК СумДУ</a>'+(kfk?' (знімок станом на '+fetchedText()+')':'')+'. Це неофіційний інструмент: якщо щось розходиться, правильними є розклад і розпорядження на сайті коледжу. '+
+    (local?'Ваші записи зберігаються лише в цьому браузері на цьому пристрої й нікуди не надсилаються.':'Ваші записи зберігаються лише у вашому приватному розділі claude.ai.')+' <a href="#" id="foot-about">Докладніше про дані</a>';
+}
+document.addEventListener('click',e=>{ if(e.target&&e.target.id==='foot-about'){ e.preventDefault(); goTool('settings','about'); } });
+function aboutHTML(){
+  return '<div class="about">'+
+    '<p><b>Звідки дані.</b> Список викладачів і розклад кожного — знімок сторінки «<a href="'+SITE.college+'" target="_blank" rel="noopener">Розклад викладача коледжу</a>» на сайті КФК СумДУ'+(kfk?', станом на '+fetchedText():'')+'. Заміни ви копіюєте зі сторінки <a href="'+SITE.zam+'" target="_blank" rel="noopener">розпоряджень</a> самі. Застосунок неофіційний і нічого не змінює на сайті коледжу; якщо щось розходиться, правильними є розклад і розпорядження на сайті.</p>'+
+    (local?'<p><b>Де ваші записи.</b> Дисципліни, плани й відмітки про пари зберігаються лише в сховищі цього браузера на цьому пристрої. Сервера немає: записи нікуди не надсилаються, і ніхто, крім вас, їх не бачить. Якщо очистити дані браузера або відкрити сторінку в іншому браузері чи на іншому комп\'ютері, записів там не буде. Тому регулярно завантажуйте резервну копію: нею ж переносять журнал.</p>'
+      :'<p><b>Де ваші записи.</b> Дисципліни, плани й відмітки про пари зберігаються у вашому приватному розділі claude.ai: колеги, які відкриють це посилання, бачать лише свої записи.</p>')+
+    '<p><b>Силабуси.</b> Файл .docx чи .pdf читається прямо в браузері й нікуди не завантажується.</p>'+
+    '<p><b>Що завантажує сторінка.</b> Шрифти (Google Fonts) і бібліотеки для читання .docx та .pdf (cdnjs). Ваші дані при цьому не передаються.</p></div>';
+}
+
 /* ----- Сьогодні ----- */
 function renderToday(v){
   const t=todayISO(); const tm=addDays(t,1);
@@ -465,14 +502,33 @@ function renderToday(v){
   items.sort((a,b)=>a.l.date<b.l.date?-1:a.l.date>b.l.date?1:(a.l.pair||0)-(b.l.pair||0));
   const overdue=[]; order.forEach(id=>{const c=courses[id]; c.lessons.forEach(l=>{ if(l.status==='planned'&&l.date<t) overdue.push({c,l}); });});
   overdue.sort((a,b)=>a.l.date<b.l.date?-1:1);
-  let h='<div class="panel"><h2>Сьогодні й завтра</h2>';
+  let h=setupHTML()+'<div class="panel"><h2>Сьогодні й завтра</h2>';
   if(!items.length) h+='<div class="note">За розкладом пар немає. Якщо була заміна, внесіть її нижче або додайте пару у вкладці «Проведені пари».</div>';
   else h+='<div class="today">'+items.map(({c,l,n})=>'<div class="tcard"><div class="when">'+(l.date===t?'сьогодні':'завтра')+' · '+DOW[parse(l.date).getDay()]+' '+dm(l.date)+(l.pair?' · '+l.pair+' пара':'')+'</div><h3>'+esc(c.title)+' · '+esc(c.groups)+'</h3><div>'+(n?'№'+n+'. ':'')+esc(l.topic)+'</div><div class="row"><span class="pill '+l.status+'">'+stLabel(l.status)+'</span>'+(l.status!=='done'?'<button class="b pri" data-done="'+c.id+'|'+l.id+'">Проведено</button>':'')+(l.status==='planned'?'<button class="b ghost" data-cancel="'+c.id+'|'+l.id+'">Скасовано</button>':'')+'</div></div>').join('')+'</div>';
   h+=tool('t-sub','Внести заміни зі сторінки сайту',subToolHTML());
   h+='</div>';
-  if(overdue.length){ h+='<div class="panel"><div class="row" style="justify-content:space-between"><h2>Не відмічені минулі пари: '+overdue.length+'</h2>'+(overdue.length>5?'<button class="b" id="toRec">Звірити з навчальною частиною</button>':'')+'</div><div class="note">Відмітьте, чи вони відбулися, щоб нумерація й розкладка журналу були точними. Якщо таких пар багато, швидше вставити перелік дат від навчальної частини.</div><div class="lessons">'+overdue.slice(0,30).map(({c,l})=>'<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--rule2);padding:6px 0"><span><span class="mono">'+dm(l.date)+'</span> · '+esc(c.title)+' · '+esc(c.groups)+' · '+esc(l.topic)+'</span><span class="row"><button class="b pri" data-done="'+c.id+'|'+l.id+'">Проведено</button><button class="b ghost" data-cancel="'+c.id+'|'+l.id+'">Не було</button></span></div>').join('')+'</div></div>'; }
+  if(overdue.length){
+    const by={}; overdue.forEach(({c,l})=>{(by[c.id]=by[c.id]||[]).push(l);});
+    h+='<div class="panel"><h2>Не відмічені минулі пари: '+overdue.length+'</h2><div class="note">Відмітьте, чи вони відбулися, щоб нумерація й розкладка журналу були точними. Найточніше — звірити з переліком пар від навчальної частини. Якщо пари йшли за розкладом, можна відмітити всі разом'+(order.some(id=>by[id]&&!(courses[id].plan||[]).length)?'; але спершу додайте силабус, щоб у минулих парах стояли теми':'')+'.</div><div class="todo">'+
+      order.filter(id=>by[id]).map(id=>{const c=courses[id], L=by[id]; return '<div><span><b>'+esc(c.title)+'</b> · '+esc(c.groups)+': '+L.length+' пар з '+dm(L[0].date)+' по '+dm(L[L.length-1].date)+'</span><span class="row"><button class="b" data-rec="'+id+'">Звірити з навчальною частиною</button><button class="b ghost" data-alldone="'+id+'">Усі минулі — проведені</button></span></div>';}).join('')+'</div>'+
+      '<details class="tool" id="t-over"'+(openTools.has('t-over')?' open':'')+'><summary>Відмітити окремо</summary><div class="tbody lessons">'+overdue.map(({c,l})=>'<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--rule2);padding:6px 0"><span><span class="mono">'+dm(l.date)+'</span> · '+esc(c.title)+' · '+esc(c.groups)+' · '+esc(l.topic)+'</span><span class="row"><button class="b pri" data-done="'+c.id+'|'+l.id+'">Проведено</button><button class="b ghost" data-cancel="'+c.id+'|'+l.id+'">Не було</button></span></div>').join('')+'</div></details></div>'; }
   v.innerHTML=h; bindActs(v); bindTools(v); bindSub(v);
-  const tr=$('#toRec'); if(tr) tr.addEventListener('click',()=>{cur=overdue[0].c.id;renderChips();goTool('lessons','t-rec');});
+  v.querySelectorAll('[data-syl]').forEach(b=>b.addEventListener('click',()=>{cur=b.dataset.syl;try{localStorage.setItem('zh_cur',cur);}catch(e){} openTools.add('t-syl'); setTab('courses','course'); const el=document.getElementById('t-syl'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'start'});}));
+  v.querySelectorAll('[data-sched]').forEach(b=>b.addEventListener('click',()=>{cur=b.dataset.sched; setTab('courses','course');}));
+  const gs=$('#go-set'); if(gs) gs.addEventListener('click',()=>goTool('settings','t-sched'));
+  v.querySelectorAll('[data-rec]').forEach(b=>b.addEventListener('click',()=>{cur=b.dataset.rec;goTool('lessons','t-rec');}));
+  v.querySelectorAll('[data-alldone]').forEach(b=>b.addEventListener('click',()=>{
+    if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Точно всі? Натисніть ще раз';setTimeout(()=>{if(b.isConnected){b.dataset.armed='';b.textContent='Усі минулі — проведені';}},4000);return;}
+    const c=courses[b.dataset.alldone]; let n=0; c.lessons.forEach(l=>{if(l.status==='planned'&&l.date<t){l.status='done';n++;}}); scheduleSave(c.id); render(); toast(c.title+': відмічено проведеними '+n);}));
+}
+function setupHTML(){
+  const rows=[];
+  if(!settings.teacher) rows.push('<div><span>Оберіть себе в налаштуваннях, щоб серед замін розпізнавати пари, додані саме вам.</span><button class="b" id="go-set">До налаштувань</button></div>');
+  order.forEach(id=>{const c=courses[id];
+    if(!(c.schedule||[]).length) rows.push('<div><span><b>'+esc(c.title)+'</b> · '+esc(c.groups)+': немає розкладу пар</span><button class="b" data-sched="'+id+'">Задати розклад</button></div>');
+    if(!(c.plan||[]).length) rows.push('<div><span><b>'+esc(c.title)+'</b> · '+esc(c.groups)+': немає тематичного плану, тому в парах замість тем «Резерв»</span><button class="b pri" data-syl="'+id+'">Додати силабус</button></div>'); });
+  if(!rows.length) return '';
+  return '<div class="panel"><h2>Що ще налаштувати</h2><div class="todo">'+rows.join('')+'</div></div>';
 }
 function subToolHTML(){
   const date=draft.subDate||addDays(todayISO(),1);
@@ -634,18 +690,21 @@ async function saveLayout(c){
 /* ----- Дисципліна ----- */
 function renderCourse(v,c){
   const planText=(c.plan||[]).map(p=>(p.label||'Л')+' | '+p.title+(p.hw?' | '+p.hw:'')).join('\n');
-  let h='<div class="panel"><h2>Дисципліна</h2><div class="grid2">'+
-   fld('c-title','Назва',c.title)+fld('c-groups','Групи',c.groups)+fld('c-short','Коротка назва файлу',c.short||'')+
-   fld('c-start','Початок семестру',c.semStart||'','date')+fld('c-end','Кінець семестру',c.semEnd||'','date')+fld('c-att','Атестація до (включно)',c.attDate||'','date')+
-   fld('c-cols','Колонок на лівій сторінці',c.cols||18,'number')+fld('c-rows','Рядків на правій сторінці',c.rows||20,'number')+fld('c-hours','Годин за пару',c.hours||2,'number')+
-   '<label class="f">Чисельник/знаменник: тиждень, що містить<input type="date" id="c-pref" value="'+esc(c.parityRef||settings.parityRef)+'"></label>'+
-   '<label class="f">цей тиждень —<select id="c-pis"><option value="num"'+((c.parityRefIs||'num')==='num'?' selected':'')+'>чисельник</option><option value="den"'+(c.parityRefIs==='den'?' selected':'')+'>знаменник</option></select></label>'+
-   '<label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="c-exam"'+(c.exam?' checked':'')+'> Є іспит</label></div>'+
-   '<h3>Базовий розклад</h3><div class="sched" id="sched"></div><div><button class="b" id="addSched">+ Рядок розкладу</button></div>'+
-   '<h3>Тематичний план</h3>'+tool('t-syl','Заповнити план із силабусу',sylToolHTML(c))+
+  const cb=(id,label,on)=>'<label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="'+id+'"'+(on?' checked':'')+'> '+label+'</label>';
+  const own=(c.semStart&&c.semStart!==settings.semStart)||(c.semEnd&&c.semEnd!==settings.semEnd)||(c.parityRef&&c.parityRef!==settings.parityRef)||(c.parityRefIs&&c.parityRefIs!==settings.parityRefIs);
+  let h='<div class="panel"><h2>'+esc(c.title)+' · '+esc(c.groups)+'</h2>'+
+   '<div class="sec"><h3>Основне</h3><div class="grid2">'+fld('c-title','Назва',c.title)+fld('c-groups','Групи',c.groups)+cb('c-exam','Є іспит (у журналі додаються колонки «Іспит» і перездача)',c.exam)+'</div></div>'+
+   '<div class="sec"><h3>Розклад пар</h3><div class="sched" id="sched"></div><div><button class="b" id="addSched">+ Рядок розкладу</button></div></div>'+
+   '<div class="sec"><h3>Тематичний план</h3>'+tool('t-syl','Заповнити план із силабусу',sylToolHTML(c))+
    '<div class="note">Один рядок — одне заняття: <span class="mono">позначка | тема | ДЗ</span>. Позначка: Л — лекція, Т — тест, ПЗ1 / ЛР1 / ІЗ — робота з окремою колонкою оцінки. Майбутні пари беруть теми з плану по черзі.</div>'+
-   '<textarea id="c-plan" spellcheck="false">'+esc(planText)+'</textarea>'+
-   '<div class="row"><button class="b pri" id="saveCourse">Зберегти дисципліну</button><button class="b ghost" id="delCourse">Видалити дисципліну</button></div></div>';
+   '<textarea id="c-plan" spellcheck="false" aria-label="Тематичний план">'+esc(planText)+'</textarea></div>'+
+   '<div class="sec"><h3>Паперовий журнал</h3><div class="grid2">'+fld('c-att','Атестація до (включно)',c.attDate||'','date')+fld('c-cols','Колонок на лівій сторінці',c.cols||18,'number')+fld('c-rows','Рядків на правій сторінці',c.rows||20,'number')+fld('c-hours','Годин за пару',c.hours||2,'number')+fld('c-short','Назва файлу для друку',c.short||'')+'</div></div>'+
+   '<details class="tool" id="t-own"'+(own||openTools.has('t-own')?' open':'')+'><summary>Інший семестр або чисельник, ніж у налаштуваннях</summary><div class="tbody"><div class="note">Зазвичай не потрібно: дати й чисельник беруться з «Налаштувань». Змінюйте лише для дисципліни, що йде за іншим графіком.</div><div class="grid2">'+
+   fld('c-start','Початок семестру',c.semStart||settings.semStart,'date')+fld('c-end','Кінець семестру',c.semEnd||settings.semEnd,'date')+
+   '<label class="f">Чисельник/знаменник: тиждень, що містить<input type="date" id="c-pref" value="'+esc(c.parityRef||settings.parityRef)+'"></label>'+
+   '<label class="f">цей тиждень —<select id="c-pis"><option value="num"'+((c.parityRefIs||'num')==='num'?' selected':'')+'>чисельник</option><option value="den"'+(c.parityRefIs==='den'?' selected':'')+'>знаменник</option></select></label></div></div></details>'+
+   '<div class="row"><button class="b pri" id="saveCourse">Зберегти дисципліну</button></div>'+
+   '<div class="danger"><button class="b ghost" id="delCourse">Видалити дисципліну</button></div></div>';
   v.innerHTML=h; bindTools(v); bindSyl(v,c);
   const sched=c.schedule?c.schedule.map(r=>Object.assign({},r)):[];
   const drawS=()=>{$('#sched').innerHTML=sched.map((r,i)=>'<div class="r"><select aria-label="День" data-i="'+i+'" data-f="dow">'+[1,2,3,4,5,6].map(d=>'<option value="'+d+'"'+(Number(r.dow)===d?' selected':'')+'>'+DOWF[d]+'</option>').join('')+'</select><select aria-label="Пара" data-i="'+i+'" data-f="pair">'+[1,2,3,4,5,6,7].map(p=>'<option value="'+p+'"'+(Number(r.pair)===p?' selected':'')+'>'+p+' пара</option>').join('')+'</select><select aria-label="Тиждень" data-i="'+i+'" data-f="parity">'+Object.keys(PAR).map(k=>'<option value="'+k+'"'+(r.parity===k?' selected':'')+'>'+PAR[k]+'</option>').join('')+'</select><button class="b ghost" data-rm="'+i+'">Прибрати</button></div>').join('')||'<div class="note">Немає рядків розкладу.</div>';
@@ -665,7 +724,7 @@ function renderCourse(v,c){
   });
   $('#delCourse').addEventListener('click',async e=>{const b=e.currentTarget;if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Натисніть ще раз, щоб видалити назавжди';return;}
     try{await store.del(c.id);}catch(err){toast('Не вдалося видалити');return;}
-    delete courses[c.id]; order=order.filter(x=>x!==c.id); cur=order[0]||null; renderChips(); setTab('today'); toast('Дисципліну видалено');});
+    delete courses[c.id]; order=order.filter(x=>x!==c.id); cur=order[0]||null; setTab(order.length?'courses':'today','lessons'); toast('Дисципліну видалено');});
 }
 function fld(id,label,val,type){return '<label class="f">'+label+'<input id="'+id+'" type="'+(type||'text')+'" value="'+esc(val)+'"></label>';}
 
@@ -742,20 +801,20 @@ function bindSyl(v,c){
 /* ----- Налаштування ----- */
 function renderSettings(v){
   const s=settings;
-  let h='<div class="panel"><h2>Викладач і семестр</h2><div class="note">Ці значення підставляються в нові дисципліни. Прізвище потрібне, щоб серед замін розпізнавати пари, додані саме вам.</div><div class="grid2">'+
-    fld('s-teacher','Прізвище та ініціали, як на сайті',s.teacher)+fld('s-start','Початок семестру',s.semStart,'date')+fld('s-end','Кінець семестру',s.semEnd,'date')+fld('s-att','Атестація до (включно)',s.attDate,'date')+
+  let h='<div class="panel"><h2>1. Семестр</h2><div class="note">Від цих дат будуються пари всіх дисциплін. Для чисельника оберіть будь-який тиждень і вкажіть, чим він є.</div><div class="grid2">'+
+    fld('s-start','Початок семестру',s.semStart,'date')+fld('s-end','Кінець семестру',s.semEnd,'date')+fld('s-att','Атестація до (включно)',s.attDate,'date')+
     '<label class="f">Чисельник/знаменник: тиждень, що містить<input type="date" id="s-pref" value="'+esc(s.parityRef)+'"></label>'+
     '<label class="f">цей тиждень —<select id="s-pis"><option value="num"'+(s.parityRefIs==='num'?' selected':'')+'>чисельник</option><option value="den"'+(s.parityRefIs==='den'?' selected':'')+'>знаменник</option></select></label></div>'+
-    '<div class="row"><button class="b pri" id="s-save">Зберегти</button>'+(order.length?'<label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="s-all"> застосувати семестр, атестацію й чисельник до всіх дисциплін</label>':'')+'</div></div>';
-  h+='<div class="panel">'+tool('t-sched','Розклад із сайту коледжу',schedToolHTML())+'</div>';
+    '<div class="row"><button class="b pri" id="s-save">Зберегти семестр</button>'+(order.length?'<label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="s-all"> застосувати до всіх дисциплін</label>':'')+'</div></div>';
+  h+='<div class="panel" id="t-sched"><h2>2. Ваш розклад</h2>'+schedToolHTML()+'</div>';
   h+='<div class="panel"><h2>Резервна копія</h2><div class="note">Один файл з усіма дисциплінами, планами й парами. Ним можна перенести журнал на інший пристрій або відновити записи після помилки.</div><div class="row">'+((downloads||local)?'<button class="b" id="s-exp">Завантажити копію</button>':'')+'<label class="b" style="cursor:pointer">Відновити з файлу<input type="file" id="s-imp" accept=".json,application/json" hidden></label></div>'+backupHTML()+'</div>';
-  h+='<div class="panel"><h2>Про записи</h2><div class="note">'+(local?'Сторінка відкрита поза claude.ai, тому записи зберігаються лише в цьому браузері на цьому пристрої. Регулярно завантажуйте резервну копію.':'Записи зберігаються у вашому приватному розділі: колеги, які відкриють це посилання, бачать лише свої дисципліни, а ви — лише свої.')+'</div></div>';
+  h+='<div class="panel" id="about"><h2>Про застосунок і дані</h2>'+aboutHTML()+'</div>';
   v.innerHTML=h; bindTools(v); bindSched(v);
   $('#s-save').addEventListener('click',()=>{
-    s.teacher=$('#s-teacher').value.trim(); s.semStart=$('#s-start').value||s.semStart; s.semEnd=$('#s-end').value||s.semEnd; s.attDate=$('#s-att').value; s.parityRef=$('#s-pref').value||s.parityRef; s.parityRefIs=$('#s-pis').value;
+    s.semStart=$('#s-start').value||s.semStart; s.semEnd=$('#s-end').value||s.semEnd; s.attDate=$('#s-att').value; s.parityRef=$('#s-pref').value||s.parityRef; s.parityRefIs=$('#s-pis').value;
     scheduleSave('_settings');
     const all=$('#s-all'); if(all&&all.checked){ order.forEach(id=>{const c=courses[id]; c.semStart=s.semStart;c.semEnd=s.semEnd;c.attDate=s.attDate;c.parityRef=s.parityRef;c.parityRefIs=s.parityRefIs;scheduleSave(id);}); }
-    toast('Налаштування збережено');
+    toast('Семестр збережено');
   });
   const ex=$('#s-exp'); if(ex) ex.addEventListener('click',async()=>{
     const data=JSON.stringify({app:'zhurnal-vykladacha',version:1,saved:new Date().toISOString(),settings,courses:order.map(id=>courses[id])},null,1);
@@ -777,6 +836,7 @@ function backupHTML(){
 }
 function schedToolHTML(){
   let h='';
+  if(!kfk) h+=fld('s-teacher','Прізвище та ініціали, як на сайті коледжу',settings.teacher);
   if(kfk) h+=teacherSelectHTML('s-who')+'<div class="sub">Розклад коледжу станом на '+fetchedText()+'. Якщо відтоді він змінився, вставте таблицю з сайту вручну (нижче).</div>';
   h+=(kfk?'<details class="tool inner" id="t-paste"'+(openTools.has('t-paste')?' open':'')+'><summary>Вставити розклад із сайту вручну</summary><div class="tbody">':'')+'<ol class="steps left"><li><span>Відкрийте <a href="'+SITE.college+'" target="_blank" rel="noopener">розклад викладача коледжу</a>, оберіть себе й натисніть OK.</span></li>'+
     '<li><span>Виділіть таблицю мишею від «Предмет» до останнього рядка, скопіюйте й вставте нижче.</span></li>'+
@@ -796,9 +856,10 @@ function schedToolHTML(){
   return h;
 }
 function bindSched(v){
+  const tn=$('#s-teacher'); if(tn) tn.addEventListener('change',()=>{settings.teacher=tn.value.trim(); scheduleSave('_settings'); toast('Прізвище збережено');});
   const tx=$('#s-sched'); if(!tx) return;
   tx.addEventListener('input',()=>{draft.schedText=tx.value;});
-  const who=$('#s-who'); if(who) who.addEventListener('change',()=>{ if(!who.value){draft.sched=null;render();return;} pickTeacher(who.value); const t=$('#s-teacher'); if(t) t.value=who.value; render(); });
+  const who=$('#s-who'); if(who) who.addEventListener('change',()=>{ if(!who.value){draft.sched=null;render();return;} pickTeacher(who.value); render(); });
   $('#s-parse').addEventListener('click',()=>{draft.schedText=tx.value; draft.schedFrom=''; draft.sched=P.clusterCourses(P.parseTeacherSchedule(tx.value)); render();});
   const ap=$('#s-apply'); if(!ap) return;
   ap.addEventListener('click',()=>{
@@ -810,8 +871,8 @@ function bindSched(v){
       if(target==='new'){ const c=newCourse({title,groups,schedule:slots,aud:x.aud||''}); if(gen) generate(c,c.semStart); made++; cur=cur||c.id; }
       else { const c=courses[target]; c.schedule=slots; if(rebuild){ const t=todayISO(); c.lessons=c.lessons.filter(l=>!(l.status==='planned'&&l.date>t&&!l.custom)); generate(c,addDays(t,1)); reflow(c); } scheduleSave(c.id); upd++; }
     });
-    draft.sched=null; draft.schedText=''; draft.schedFrom=''; openTools.delete('t-sched'); if(!cur) cur=order[0]; renderChips(); render();
-    toast('Створено дисциплін: '+made+(upd?', оновлено: '+upd:'')+'. Далі: силабус у вкладці «Дисципліна»');
+    draft.sched=null; draft.schedText=''; draft.schedFrom=''; if(!cur) cur=order[0]; setTab('today');
+    toast('Створено дисциплін: '+made+(upd?', оновлено: '+upd:'')+'. Далі — силабуси: див. «Що ще налаштувати»');
   });
 }
 
@@ -827,7 +888,7 @@ function pickTeacher(name){
   draft.sched=P.clusterCourses(P.parseTeacherSchedule(rows.map(r=>r.join('\t')).join('\n')));
 }
 function fetchedText(){ if(!kfk||!kfk.fetched) return ''; const [y,m,d]=kfk.fetched.split('-'); return d+'.'+m+'.'+y; }
-function createCourse(){ const c=newCourse(); cur=c.id; renderChips(); setTab('course'); }
+function createCourse(){ const c=newCourse(); cur=c.id; setTab('courses','course'); }
 async function importSeed(){
   try{
     const snap=await db.collection('seed').get(); if(snap.empty){toast('Немає даних для імпорту');return;}
