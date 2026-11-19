@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Облік проведених пар і розкладка паперового журналу для викладачів КФК СумДУ">
+</head>
+<body>
+<title>Журнал викладача</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: шапка з вкладками, нижче робоча зона одного розділу; розкладка журналу — розвороти з двох сторінок, як у паперовому журналі. */
+:root{
+  --paper:#f7f8fb; --sheet:#ffffff; --ink:#1b2340; --mut:#5d6684; --rule:#d6dcee; --rule2:#e9edf7;
+  --accent:#2347b8; --accent-ink:#ffffff; --work:#e4ecff; --att:#fff0cf; --fin:#dff3e4; --plan:#f1f2f6;
+  --done:#1f7a4d; --cancel:#b3261e; --warn:#a86500;
+  --f-head:"Manrope",system-ui,sans-serif; --f-body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif; --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#11131b; --sheet:#181b26; --ink:#e7eaf5; --mut:#9aa2bf; --rule:#2c3247; --rule2:#222737;
+  --accent:#7c9cff; --accent-ink:#0d1330; --work:#1f2a4a; --att:#3a2f14; --fin:#163024; --plan:#1d2030;
+  --done:#5fd39a; --cancel:#ff8a80; --warn:#f0b35a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#11131b; --sheet:#181b26; --ink:#e7eaf5; --mut:#9aa2bf; --rule:#2c3247; --rule2:#222737;
+  --accent:#7c9cff; --accent-ink:#0d1330; --work:#1f2a4a; --att:#3a2f14; --fin:#163024; --plan:#1d2030;
+  --done:#5fd39a; --cancel:#ff8a80; --warn:#f0b35a; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font:14px/1.45 var(--f-body);padding-block:16px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font:800 24px/1.1 var(--f-head);margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font:700 18px/1.2 var(--f-head);margin:0;text-wrap:balance}
+h3{font:700 15px/1.2 var(--f-head);margin:0}
+.sub{color:var(--mut);font-size:13px}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--rule)}
+nav.tabs button{background:none;border:0;border-bottom:3px solid transparent;padding:8px 12px;font:600 14px var(--f-body);color:var(--mut);cursor:pointer}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--rule);background:var(--sheet);color:var(--ink);border-radius:999px;padding:5px 12px;font:500 13px var(--f-body);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.panel{background:var(--sheet);border:1px solid var(--rule);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mut);min-width:0}
+input,select,textarea{font:14px var(--f-body);color:var(--ink);background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:7px 9px;min-width:0;width:100%}
+textarea{font-family:var(--f-mono);font-size:13px;min-height:220px;resize:vertical}
+input[type=checkbox]{width:auto}
+button.b{font:600 13px var(--f-body);border-radius:6px;padding:7px 12px;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);cursor:pointer;white-space:nowrap}
+label.b{font:600 13px var(--f-body);border-radius:6px;padding:7px 12px;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);display:inline-block}
+button.b.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.b.ghost{background:none}
+button.b:disabled{opacity:.45;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.empty{border:1px dashed var(--rule);border-radius:10px;padding:24px;text-align:center;color:var(--mut);display:flex;flex-direction:column;gap:10px;align-items:center}
+.pill{display:inline-block;border-radius:999px;padding:1px 8px;font:600 11px var(--f-body);letter-spacing:.02em;border:1px solid currentColor}
+.pill.done{color:var(--done)} .pill.planned{color:var(--mut)} .pill.cancelled{color:var(--cancel)}
+.lessons{display:flex;flex-direction:column}
+.lesson{display:grid;grid-template-columns:2.4rem 4.6rem 2rem minmax(0,1fr) minmax(0,.6fr) 4.6rem auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--rule2)}
+.lesson.cancelled{opacity:.55}
+.lesson.cancelled .topic{text-decoration:line-through}
+.lesson .n{color:var(--mut);text-align:right}
+.lesson .acts{display:flex;gap:4px}
+.lesson input{padding:5px 7px;font-size:13px}
+.lesson .wl{font-family:var(--f-mono)}
+.lhead{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);border-bottom:1px solid var(--rule)}
+.today{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.tcard{border:1px solid var(--rule);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--sheet)}
+.tcard .when{font-family:var(--f-mono);color:var(--mut);font-size:12px}
+.spread{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:14px;border:1px solid var(--rule);border-radius:8px;padding:10px;background:var(--sheet)}
+.spread>h3{grid-column:1/-1;color:var(--mut)}
+.lp{overflow-x:auto}.lp table{border-collapse:collapse;width:100%;min-width:420px;table-layout:fixed}
+.lp td{border:1px solid var(--rule);height:92px;vertical-align:bottom;text-align:center;padding:2px 0}
+.lp td div{writing-mode:vertical-rl;transform:rotate(180deg);font:12px var(--f-mono);margin:0 auto;white-space:nowrap}
+.lp tr.num td{height:auto;font-size:10px;color:var(--mut);vertical-align:middle}
+td.work{background:var(--work)} td.att,td.reta{background:var(--att)} td.fin{background:var(--fin)} td.plan{background:var(--plan);color:var(--mut)}
+td.ret div{color:var(--mut);font-style:italic}
+.rp{overflow-x:auto}.rp table{border-collapse:collapse;width:100%}.rp th,.rp td{border:1px solid var(--rule);padding:3px 6px;font-size:12px;text-align:left;vertical-align:top}
+.rp th{color:var(--mut);font-weight:600}.rp td.c{text-align:center;white-space:nowrap;font-family:var(--f-mono)}
+.rp tr.p td{color:var(--mut)}
+.legend{display:flex;gap:6px;flex-wrap:wrap;font-size:12px}.legend span{border:1px solid var(--rule);border-radius:4px;padding:2px 8px}
+.note{color:var(--mut);font-size:13px;max-width:70ch}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--sheet);padding:8px 14px;border-radius:8px;font-size:13px;z-index:20}
+.sched{display:flex;flex-direction:column;gap:6px}
+.sched .r{display:grid;grid-template-columns:8rem 6rem 9rem auto;gap:6px}
+details.tool{border:1px solid var(--rule);border-radius:8px;padding:10px 12px;background:var(--paper)}
+details.tool>summary{cursor:pointer;font:700 14px var(--f-head)}
+details.tool[open]>summary{margin-bottom:10px}
+details.tool .tbody{display:flex;flex-direction:column;gap:10px}
+.prev{display:flex;flex-direction:column;gap:4px;max-height:360px;overflow:auto;border:1px solid var(--rule2);border-radius:6px;padding:8px;background:var(--sheet)}
+.prev label{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--ink)}
+.prev .pl{display:grid;grid-template-columns:2rem minmax(0,1fr) auto;gap:8px;font-size:13px;border-bottom:1px solid var(--rule2);padding:2px 0}
+.op-add,.op-restore{color:var(--done)} .op-cancel{color:var(--cancel)} .op-done{color:var(--accent)}
+.steps{display:flex;flex-direction:column;gap:8px;text-align:left;max-width:62ch;margin:0 auto;padding:0;list-style:none;counter-reset:s}
+.steps.left{margin:0}
+.steps li{counter-increment:s;display:flex;gap:10px;align-items:flex-start}
+.steps li::before{content:counter(s);font:700 12px var(--f-mono);color:var(--accent-ink);background:var(--accent);border-radius:50%;width:22px;height:22px;flex:none;display:grid;place-items:center}
+.lesson button.d{background:none;border:0;padding:0;color:inherit;text-align:left;cursor:pointer;font-family:var(--f-mono);font-size:14px}
+.lesson button.d:hover{text-decoration:underline}
+form.mv{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;padding:6px 0 10px 2.4rem;border-bottom:1px solid var(--rule2)}
+.cl{display:grid;grid-template-columns:auto minmax(0,1.4fr) minmax(0,1fr);gap:10px;align-items:center;border-bottom:1px solid var(--rule2);padding:8px 0}
+a{color:var(--accent)}
+.empty .start{display:flex;flex-direction:column;gap:6px;width:min(100%,30rem);text-align:left}
+label.f.who{font-size:13px;color:var(--ink);font-weight:600}
+label.f.who select{font-size:15px;padding:9px 10px}
+details.tool.inner{background:var(--sheet)}
+@media (max-width:760px){.cl{grid-template-columns:auto minmax(0,1fr)}.cl>label{grid-column:2}form.mv{padding-left:0}}
+@media (max-width:760px){
+  .spread{grid-template-columns:minmax(0,1fr)}
+  .lesson{grid-template-columns:2rem 4.2rem minmax(0,1fr) auto;grid-template-areas:"n d t a" ". . h w"}
+  .lesson .pair{display:none}.lesson .n{grid-area:n}.lesson .d{grid-area:d}.lesson .topic{grid-area:t}.lesson .hw{grid-area:h}.lesson .wl{grid-area:w}.lesson .acts{grid-area:a}
+  .lhead{display:none}
+  .sched .r{grid-template-columns:1fr 1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Журнал викладача</h1>
+      <div class="sub" id="who">Облік проведених пар і розкладка паперового журналу</div>
+    </div>
+    <div class="sub mono" id="status">завантаження…</div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Розділи">
+    <button role="tab" id="t-today" aria-selected="true">Сьогодні</button>
+    <button role="tab" id="t-lessons" aria-selected="false">Проведені пари</button>
+    <button role="tab" id="t-layout" aria-selected="false">Розкладка журналу</button>
+    <button role="tab" id="t-course" aria-selected="false">Дисципліна</button>
+    <button role="tab" id="t-settings" aria-selected="false">Налаштування</button>
+  </nav>
+
+  <div class="chips" id="courseChips"></div>
+  <main id="view"></main>
+</div>
+
+<script id="zh-parsers">
+/* Парсери «Журналу викладача». Чисті функції без DOM: підключаються в сторінку й тестуються в node. */
+(function(root){
+"use strict";
+const MARK=/^(Л|ЛЗ|ПЗ|ПР|ЛР|СР|СРС|ІЗ|МК|ТК|Т)\s*(\d+)\s*[.)]\s*(.*)$/i;
+function norm(s){return String(s||'').replace(/ /g,' ').replace(/[ \t]+/g,' ').trim();}
+
+/* Силабус КФК (єдина форма): перелік занять — у розділі «7.1 Види навчальних занять»
+   СЕМЕСТР N → Змістовий модуль → Тема → пункти «Л 1.», «ПЗ 2.», «ЛР 3.». Кінець — «7.2» або «8. Методи». */
+function parseSyllabus(text){
+  const lines=String(text).split(/\r?\n/).map(norm).filter(Boolean);
+  let start=lines.findIndex(l=>/^7\.?\s*1\.?\s*Види навчальних занять/i.test(l));
+  if(start<0) start=lines.findIndex(l=>/^7\.?\s*Види навчальних занять/i.test(l));
+  if(start<0) start=0;                                // не той формат — шукаємо пункти по всьому тексту
+  const sems=[]; let sem=null, mod='', theme='', last=null, modWait=false;
+  const ensureSem=n=>{ sem=sems.find(s=>s.n===n); if(!sem){ sem={n,items:[]}; sems.push(sem);} };
+  for(let i=start+1;i<lines.length;i++){
+    const l=lines[i]; let m;
+    if(/^7\.?\s*2\.?\s*Види навчальної діяльності|^8\.?\s*Методи/i.test(l)) break;
+    if((m=l.match(/^СЕМЕСТР\s*(\d+)\.?\s*(.*)$/i))){ ensureSem(+m[1]); last=null; const r=m[2]; if((m=r.match(/^Змістовий модуль\s*(\d+)\.?\s*(.*)$/i))){ mod='ЗМ'+m[1]+(m[2]?'. '+m[2]:''); modWait=!m[2]; } continue; }
+    if((m=l.match(/^Змістовий модуль\s*(\d+)\.?\s*(.*)$/i))){ mod='ЗМ'+m[1]+(m[2]?'. '+m[2]:''); modWait=!m[2]; last=null; continue; }
+    if((m=l.match(/^Тема\s*(\d+)\.?\s*(.*)$/i))){ theme='Тема '+m[1]+'. '+norm(m[2]); last=null; modWait=false; continue; }
+    if((m=l.match(MARK))){
+      if(!sem) ensureSem(0);
+      const it={kind:m[1].toUpperCase(),n:+m[2],title:norm(m[3]),theme,module:mod};
+      sem.items.push(it); last=it; modWait=false; continue;
+    }
+    if(modWait && l===l.toUpperCase() && /[А-ЯІЇЄҐ]/.test(l)){ mod+='. '+l; modWait=false; continue; }
+    // продовження назви пункту, перенесене на новий рядок (PDF, комірки Word)
+    if(last && l.length<220 && !/^\d+\.?$/.test(l) && (/^[а-яіїєґa-z(«"0-9–-]/.test(l) || /[,–-]$/.test(last.title) || /(^|\s)[а-яіїєґa-z]{1,3}$/.test(last.title) || !last.title)) last.title=norm(last.title+' '+l);
+  }
+  return sems.filter(s=>s.items.length).map(s=>{const seen=new Set(); s.items=s.items.filter(x=>{const k=x.kind+x.n+x.title; if(seen.has(k)) return false; seen.add(k); return true;}); return s;});
+}
+function planFromSemester(sem){
+  return sem.items.filter(it=>!/^(СР|СРС)$/.test(it.kind)).map(it=>{
+    const k=it.kind;
+    const label = (k==='Л'||k==='ЛЗ') ? 'Л' : (k==='Т'||k==='ТК'||k==='МК') ? 'Т' : (k==='ПР'?'ПЗ':k)+it.n;
+    const pref = (k==='Л'||k==='ЛЗ') ? 'Л'+it.n : (k==='ПР'?'ПЗ':k)+it.n;
+    const t=it.title.replace(/\.$/,'');
+    const hw = label==='Л' ? 'Конспект '+pref : (/^(ПЗ|ЛР|ІЗ)/.test(label) ? 'Звіт '+pref : '');
+    return {label, title: pref+'. '+t, hw, theme: it.theme||'', module: it.module||''};
+  });
+}
+
+/* Розклад викладача з сайту КФК (скопійована таблиця): Предмет | Викладач | Група | Ауд. | Пара | День */
+const DAYS={'пн':1,'вт':2,'ср':3,'чт':4,'пт':5,'сб':6};
+function parseTeacherSchedule(text){
+  const rows=[];
+  String(text).split(/\r?\n/).forEach(line=>{
+    let cs=line.split('\t').map(norm);
+    if(cs.length<5) cs=line.split(/\s{2,}|\|/).map(norm).filter(x=>x!=='');
+    if(cs.length<5) return;
+    if(/^предмет$/i.test(cs[0])) return;
+    const dayCell=cs[cs.length-1].toLowerCase().replace('.','').slice(0,2);
+    const dow=DAYS[dayCell]; const pair=parseInt(cs[cs.length-2],10);
+    if(!dow||!pair) return;
+    let subj=cs[0], parity='all';
+    const PM=/\(\s*(чис|знам)[а-яіїєґ.]*\s*[()]?/i, pm=subj.match(PM);   // «(чисельник)», «(знаменник )», описка «(знаменник(»
+    if(pm) parity=/^чис/i.test(pm[1])?'num':'den';
+    subj=norm(subj.replace(new RegExp(PM.source,'ig'),''));
+    const group=cs[2]||'', aud=cs.length>=6?cs[3]:'';
+    rows.push({subject:subj,group,aud,pair,dow,parity});
+  });
+  // зливаємо однакові слоти для кількох груп (731 і 733 в одній парі)
+  const m=new Map();
+  rows.forEach(r=>{const k=[r.subject.toLowerCase().replace(/[^а-яіїєґa-z]/g,''),r.dow,r.pair,r.parity].join('|'); if(!m.has(k)) m.set(k,{...r,groups:[]}); const x=m.get(k); if(r.group&&!x.groups.includes(r.group)) x.groups.push(r.group); if(!x.aud&&r.aud) x.aud=r.aud;});
+  return [...m.values()].map(x=>({subject:x.subject,groups:x.groups.join('/'),aud:x.aud,pair:x.pair,dow:x.dow,parity:x.parity}));
+}
+function subjectsOf(slots){ const s=new Map(); slots.forEach(x=>{const k=x.subject.toLowerCase().replace(/[^а-яіїєґa-z]/g,''); if(!s.has(k)) s.set(k,{subject:x.subject,groups:new Set(),slots:[]}); const e=s.get(k); x.groups.split('/').forEach(g=>g&&e.groups.add(g)); e.slots.push(x);}); return [...s.values()].map(e=>({subject:e.subject,groups:[...e.groups].join('/'),slots:e.slots})); }
+
+/* Перелік дат від навчальної частини: «05.09», «05.09.2026», «5.09 3 пара», «2026-09-05», через кому чи з нового рядка */
+function parseDateList(text,year){
+  const out=[]; const re=/(\d{4})-(\d{2})-(\d{2})|(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?(?:[^\d\n,;]{0,6}(\d)\s*(?:пара|п\.?)?)?/g; let m;
+  while((m=re.exec(String(text)))){
+    let y,mo,d,pair=null;
+    if(m[1]){y=+m[1];mo=+m[2];d=+m[3];}
+    else{d=+m[4];mo=+m[5];y=m[6]?(m[6].length===2?2000+(+m[6]):+m[6]):(year||(mo>=8?2026:2027)); if(m[7]) pair=+m[7];}
+    if(mo<1||mo>12||d<1||d>31) continue;
+    out.push({date:y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0'),pair});
+  }
+  const seen=new Set(); return out.filter(x=>{const k=x.date+'|'+(x.pair||''); if(seen.has(k)) return false; seen.add(k); return true;});
+}
+
+/* Заміни зі сторінки КФК (скопійована таблиця): Група | Пара | Було | Заміна | Ауд.
+   Пара: «1-2», «7-8», «5-8» (академічні години коледжу → пари 1, 4, 3–4) або «2 пара» (бакалаври). */
+function parseSubstitutions(text){
+  const out=[];
+  for(const line of String(text).split(/\r?\n/)){
+    if(/^\s*Заміна аудиторій/i.test(line)) break;           // друга таблиця — лише аудиторії
+    const cs=line.split('\t').map(norm);
+    if(cs.length<4) continue;
+    let pairs=[]; const pm=cs[1].match(/^(\d+)\s*-\s*(\d+)$/), pb=cs[1].match(/^(\d+)\s*(?:-\s*(\d+)\s*)?пар/i);
+    if(pm){ const a=Math.ceil(+pm[1]/2), b=Math.ceil(+pm[2]/2); for(let k=a;k<=b;k++) pairs.push(k); }
+    else if(pb){ const a=+pb[1], b=pb[2]?+pb[2]:a; for(let k=a;k<=b;k++) pairs.push(k); }
+    else continue;
+    const groups=cs[0].split(/[,;]\s*/).map(norm).filter(Boolean);
+    pairs.forEach(pair=>out.push({groups,pair,from:cs[2],to:cs[3],aud:cs[4]||''}));
+  }
+  return out;
+}
+const isFree=s=>/^(вільн|—|-|$)/i.test(norm(s));
+function groupTokens(s){ return String(s||'').split(/[\/,;\s]+/).map(x=>x.toLowerCase().replace(/[^0-9a-zа-яіїєґ-]/g,'')).filter(Boolean); }
+function groupsOverlap(a,b){ const A=groupTokens(a), B=groupTokens(b); return A.some(x=>B.includes(x)); }
+function teacherIn(s,teacher){ const sur=norm(teacher).split(/[\s.]+/)[0]; return !!sur && sur.length>2 && norm(s).toLowerCase().includes(sur.toLowerCase()); }
+/* Що означає рядок заміни для дисципліни course ({title,groups}): 'cancel', 'add' або null */
+function substitutionEffect(row,course,teacher){
+  if(!groupsOverlap(row.groups.join(','),course.groups)) return null;
+  const mineFrom=!isFree(row.from) && nameMatch(row.from.replace(/\(.*?\)/g,''),course.title);
+  const hasT=/\(.*?\)/.test(row.to);
+  const mineTo=!isFree(row.to) && nameMatch(row.to.replace(/\(.*?\)/g,''),course.title) && (!hasT || !teacher || teacherIn(row.to,teacher));
+  if(mineTo && !mineFrom) return 'add';
+  if(mineFrom && !mineTo) return 'cancel';
+  return null;
+}
+/* Слоти розкладу → курси: та сама дисципліна (з поправкою на описки) і той самий потік груп */
+function clusterCourses(slots){
+  const cl=[];
+  const tok=g=>groupTokens(g);
+  slots.forEach(s=>{
+    const T=tok(s.groups);
+    // та сама дисципліна (з поправкою на описки) і групи перетинаються: 731 і 731/733 — один потік
+    let c=cl.find(x=>nameMatch(x.subject,s.subject) && x.toks.some(t=>T.includes(t)));
+    if(!c){ c={subject:s.subject,toks:[],names:{},aud:s.aud,slots:[]}; cl.push(c); }
+    s.groups.split('/').forEach(g=>{const k=tok(g)[0]; if(k&&!c.toks.includes(k)){c.toks.push(k);c.names[k]=g.trim();}});
+    if(s.subject.length>c.subject.length) c.subject=s.subject;   // повніша назва, без описки
+    if(!c.slots.some(x=>x.dow===s.dow&&x.pair===s.pair&&x.parity===s.parity)) c.slots.push({dow:s.dow,pair:s.pair,parity:s.parity});
+    if(!c.aud&&s.aud) c.aud=s.aud;
+  });
+  return cl.map(c=>{ c.slots.sort((a,b)=>a.dow-b.dow||a.pair-b.pair); const ks=c.toks.slice().sort(); return {subject:c.subject,groups:ks.map(k=>c.names[k]).join('/'),gkey:ks.join('/'),aud:c.aud,slots:c.slots}; });
+}
+function nameMatch(a,b){
+  const t=s=>norm(s).toLowerCase().replace(/\(.*?\)/g,'').replace(/[^а-яіїєґa-z ]/g,' ').split(/\s+/).filter(w=>w.length>2);
+  const A=t(a),B=t(b); if(!A.length||!B.length) return false;
+  const ini=w=>w.map(x=>x[0]).join(''), ab=s=>{const x=norm(s).replace(/\(.*?\)/g,'').trim(); return /^[А-ЯІЇЄҐA-Z]{2,6}$/.test(x)?x.toLowerCase():'';};
+  if(ab(a)&&ab(a)===ini(B)) return true; if(ab(b)&&ab(b)===ini(A)) return true;
+  const hit=A.filter(w=>B.some(v=>v.startsWith(w.slice(0,5))||w.startsWith(v.slice(0,5)))).length;
+  return hit>=Math.min(2,A.length,B.length) || (A.length===1&&hit===1);
+}
+root.ZhParsers={parseSyllabus,planFromSemester,parseTeacherSchedule,subjectsOf,clusterCourses,parseDateList,parseSubstitutions,substitutionEffect,groupsOverlap,nameMatch,norm};
+})(typeof window!=='undefined'?window:globalThis);
+</script>
+<script>
+(function(){
+"use strict";
+const P=window.ZhParsers;
+const DOW=['нд','пн','вт','ср','чт','пт','сб'];
+const DOWF=['','Понеділок','Вівторок','Середа','Четвер','П\'ятниця','Субота'];
+const PAR={all:'щотижня',num:'чисельник',den:'знаменник'};
+const SITE={
+  college:'https://kfk.sumdu.edu.ua/studentu/rozklad-dlia-vykladacha-koledzhu/',
+  zam:'https://kfk.sumdu.edu.ua/studentu/zaminy/'
+};
+let db=null, user=null, uid=null, owner=false, downloads=null, local=false;
+let settings={teacher:'',semStart:'2026-09-01',semEnd:'2026-12-31',attDate:'',parityRef:'2026-11-09',parityRefIs:'num'};
+let courses={};      // id -> course
+let order=[];        // ids
+let cur=null;        // selected course id
+let tab='today';
+let saving={};       // id -> {timer, busy, again}
+let booted=false;
+let kfk=null;          // знімок розкладу викладачів коледжу (kfk_rozklad.json поруч зі сторінкою)
+const openTools=new Set();   // які розкривні інструменти відкриті
+const draft={schedText:'',sched:null,syl:{},rec:{},subText:'',subDate:'',sub:null,backup:null};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function toast(t){const d=document.createElement('div');d.className='toast';d.setAttribute('role','status');d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2600);}
+function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function parse(s){const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d);}
+function dm(s){if(!s)return '';const p=s.split('-');return p[2]+'.'+p[1];}
+function todayISO(){return iso(new Date());}
+function addDays(s,n){const d=parse(s);d.setDate(d.getDate()+n);return iso(d);}
+function parityOf(dateISO,c){const ref=parse(c.parityRef||settings.parityRef||'2026-11-09');const d=parse(dateISO);const mon=x=>{const t=new Date(x);t.setDate(t.getDate()-((t.getDay()+6)%7));return t;};const w=Math.round((mon(d)-mon(ref))/(7*864e5));const is=c.parityRefIs||settings.parityRefIs||'num';return (((w%2)+2)%2===0)?is:(is==='num'?'den':'num');}
+function isWork(label){return /^(ПЗ|ЛР|ІЗ|ПР)\s*\d*/i.test(label||'');}
+function newId(){return 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function lid(){return 'l'+Math.random().toString(36).slice(2,9);}
+function slotText(s){return DOW[s.dow]+' '+s.pair+(s.parity==='all'?'':' ('+(s.parity==='num'?'чис.':'знам.')+')');}
+
+/* ---------- storage: claude.ai (приватний розділ викладача) або цей браузер ---------- */
+const LS='zh_local_v1';
+function lsAll(){try{return JSON.parse(localStorage.getItem(LS)||'{}')||{};}catch(e){return {};}}
+function lsPut(m){try{localStorage.setItem(LS,JSON.stringify(m));return true;}catch(e){return false;}}
+function colRef(){return db.collection('data/users/'+uid);}
+const store={
+  async all(){ if(!local){const s=await colRef().get();return s.docs.map(d=>({id:d.id,data:d.data()}));} const m=lsAll();return Object.keys(m).map(id=>({id,data:m[id]})); },
+  async set(id,o){ if(!local) return colRef().doc(id).set(o); const m=lsAll(); m[id]=o; if(!lsPut(m)) throw {code:'storage'}; },
+  async del(id){ if(!local) return colRef().doc(id).delete(); const m=lsAll(); delete m[id]; lsPut(m); }
+};
+function scheduleSave(id){
+  const s=saving[id]||(saving[id]={timer:null,busy:false,again:false});
+  clearTimeout(s.timer); s.timer=setTimeout(()=>flush(id),700); setStatus('зберігаю…');
+}
+async function flush(id){
+  const s=saving[id]; if(s.busy){s.again=true;return;}
+  s.busy=true;
+  try{ const c=id==='_settings'?settings:courses[id]; if(c){ await store.set(id,JSON.parse(JSON.stringify(c))); } setStatus(local?'збережено в цьому браузері':'збережено'); }
+  catch(e){ setStatus('не збережено: '+(e&&e.code||'помилка')); toast('Не вдалося зберегти. Перевірте з\'єднання.'); }
+  s.busy=false; if(s.again){s.again=false; flush(id);}
+}
+function setStatus(t){$('#status').textContent=t;}
+async function saveFile(filename,data,mime){
+  if(downloads){ try{ const r=await downloads.save({filename,data}); return r&&r.status; }catch(e){ if(e&&e.code==='unavailable'){} else return null; } }
+  if(local){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([data],{type:mime||'text/plain'})); a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000); return 'saved'; }
+  return null;
+}
+
+/* ---------- lessons logic ---------- */
+function sorted(c){return c.lessons.slice().sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:(a.pair||0)-(b.pair||0));}
+function nextPlanIdx(c){let m=-1;c.lessons.forEach(l=>{if(typeof l.planIdx==='number'&&l.planIdx>m)m=l.planIdx;});if(m<0&&c.lessons.length)return (c.plan||[]).length;return m+1;}
+function lessonFromPlan(c,date,pair,idx){
+  const p=(c.plan||[])[idx];
+  return {id:lid(),date,pair:pair||null,status:'planned',topic:p?p.title:'Резерв / консультація',hw:p?(p.hw||''):'',work:p&&isWork(p.label)?p.label:'',planIdx:p?idx:null};
+}
+/* Теми майбутніх пар ідуть за планом по черзі. Після скасування, заміни чи перенесення черга зсувається.
+   Проведені пари й пари з темою, яку викладач вписав сам (custom), не чіпаємо. */
+function reflow(c,start){
+  const plan=c.plan||[]; if(!plan.length) return;
+  const L=sorted(c);
+  if(typeof start!=='number'){
+    let m=Infinity; L.forEach(l=>{ if(l.status!=='done'&&typeof l.planIdx==='number'&&l.planIdx<m) m=l.planIdx; });
+    start=m===Infinity?nextPlanIdx(c):m;
+  }
+  let idx=start;
+  L.forEach(l=>{
+    if(l.status==='done') return;
+    if(l.status==='cancelled'){ l.planIdx=null; return; }
+    if(l.custom) return;
+    const p=plan[idx];
+    l.topic=p?p.title:'Резерв / консультація'; l.hw=p?(p.hw||''):''; l.work=p&&isWork(p.label)?p.label:''; l.planIdx=p?idx:null; idx++;
+  });
+}
+function generate(c,from){
+  const start=parse(from||todayISO()); const end=parse(c.semEnd||settings.semEnd||'2026-12-31');
+  const have=new Set(c.lessons.map(l=>l.date+'|'+(l.pair||'')));
+  const lastDate=c.lessons.reduce((m,l)=>l.date>m?l.date:m,'');
+  let idx=nextPlanIdx(c), added=0;
+  for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1)){
+    const di=iso(d); if(di<=lastDate) continue;
+    (c.schedule||[]).slice().sort((a,b)=>a.pair-b.pair).forEach(r=>{
+      if(Number(r.dow)!==d.getDay()) return;
+      if(r.parity!=='all' && parityOf(di,c)!==r.parity) return;
+      const k=di+'|'+(r.pair||''); if(have.has(k)) return;
+      c.lessons.push(lessonFromPlan(c,di,Number(r.pair)||null,idx)); idx++; added++; have.add(k);
+    });
+  }
+  return added;
+}
+function numbered(c){let n=0;return sorted(c).map(l=>({l,n:l.status==='cancelled'?null:++n}));}
+function newCourse(f){
+  const id=newId();
+  const c=Object.assign({id,title:'Нова дисципліна',groups:'',short:'',semStart:settings.semStart,semEnd:settings.semEnd,attDate:settings.attDate||'',cols:18,rows:20,hours:2,exam:false,
+    parityRef:settings.parityRef,parityRefIs:settings.parityRefIs,schedule:[],plan:[],lessons:[],created:Date.now()+order.length},f||{});
+  courses[id]=c; order.push(id); scheduleSave(id); return c;
+}
+
+/* ---------- journal layout ---------- */
+function layout(c){
+  const COLS=Number(c.cols)||18, ROWS=Number(c.rows)||20, att=c.attDate||'';
+  const spreads=[]; let cols=[], rows=[];
+  const flush=()=>{if(cols.length||rows.length) spreads.push({cols,rows}); cols=[];rows=[];};
+  const add=(g,row)=>{ if(cols.length+g.length>COLS || (row&&rows.length>=ROWS)) flush(); cols=cols.concat(g); if(row) rows.push(row); };
+  let attDone=!att, n=0;
+  sorted(c).filter(l=>l.status!=='cancelled').forEach(l=>{
+    if(!attDone && l.date>att){ add([{t:'Атест.',k:'att'},{t:'',k:'reta'}]); attDone=true; }
+    n++; const g=[{t:dm(l.date),k:l.status==='done'?'date':'plan'}];
+    if(isWork(l.work)) g.push({t:l.work,k:'work'});
+    add(g,{n,date:dm(l.date),topic:l.topic,hw:l.hw,planned:l.status!=='done'});
+  });
+  if(!attDone) add([{t:'Атест.',k:'att'},{t:'',k:'reta'}]);
+  let end=[{t:'Сем.',k:'fin'},{t:'',k:'ret'}]; if(c.exam) end=end.concat([{t:'Іспит',k:'fin'},{t:'',k:'ret'}]); end.push({t:'П',k:'fin'});
+  add(end); flush();
+  return {spreads,COLS};
+}
+function spreadHTML(c,s,i,COLS){
+  let h='<div class="spread"><h3>Розворот '+i+'</h3><div class="lp"><table><tr>';
+  for(let k=0;k<COLS;k++){ const x=s.cols[k]; if(x){ const txt=x.t||'перездача'; const cl=x.k==='reta'?'reta ret':x.k; h+='<td class="'+cl+'"><div>'+esc(txt)+'</div></td>'; } else h+='<td><div></div></td>'; }
+  h+='</tr><tr class="num">'; for(let k=0;k<COLS;k++) h+='<td>'+(k+1)+'</td>'; h+='</tr></table></div>';
+  h+='<div class="rp"><table><tr><th>№</th><th>Дата</th><th>Год</th><th>Тема</th><th>ДЗ</th></tr>';
+  s.rows.forEach(r=>{ h+='<tr class="'+(r.planned?'p':'')+'"><td class="c">'+r.n+'</td><td class="c">'+r.date+'</td><td class="c">'+(c.hours||2)+'</td><td>'+esc(r.topic)+'</td><td>'+esc(r.hw)+'</td></tr>'; });
+  return h+'</table></div></div>';
+}
+
+/* ---------- views ---------- */
+const TABS=['today','lessons','layout','course','settings'];
+function setTab(t){tab=t;TABS.forEach(x=>$('#t-'+x).setAttribute('aria-selected',String(x===t)));render();}
+TABS.forEach(x=>$('#t-'+x).addEventListener('click',()=>setTab(x)));
+function tool(id,title,body){return '<details class="tool" id="'+id+'"'+(openTools.has(id)?' open':'')+'><summary>'+title+'</summary><div class="tbody">'+body+'</div></details>';}
+function bindTools(v){v.querySelectorAll('details.tool').forEach(d=>d.addEventListener('toggle',()=>{d.open?openTools.add(d.id):openTools.delete(d.id);}));}
+function goTool(t,id){openTools.add(id);setTab(t);const el=document.getElementById(id);if(el&&el.scrollIntoView)el.scrollIntoView({block:"start"});}
+
+function renderChips(){
+  const el=$('#courseChips');
+  if(!order.length){el.innerHTML='';return;}
+  el.innerHTML=order.map(id=>'<button class="chip" data-c="'+id+'" aria-pressed="'+(id===cur)+'">'+esc(courses[id].title)+' · '+esc(courses[id].groups)+'</button>').join('')+'<button class="chip" id="newCourse">+ Дисципліна</button>';
+  el.querySelectorAll('[data-c]').forEach(b=>b.addEventListener('click',()=>{cur=b.dataset.c;try{localStorage.setItem('zh_cur',cur);}catch(e){}renderChips();if(tab==='today'||tab==='settings')setTab('lessons');else render();}));
+  $('#newCourse').addEventListener('click',createCourse);
+}
+function render(){
+  const v=$('#view');
+  if(!booted){ v.innerHTML='<div class="empty"><h2>Завантажую ваші дисципліни</h2><div class="note">Тут з\'являться пари на сьогодні, облік проведених занять і розкладка паперового журналу.</div></div>'; return; }
+  if(!local&&!db){ v.innerHTML='<div class="empty"><h2>Сховище недоступне</h2><div>Відкрийте сторінку, увійшовши в claude.ai: записи зберігаються у вашому приватному розділі.</div></div>'; return; }
+  if(!uid){ v.innerHTML='<div class="empty"><h2>Потрібен вхід</h2><div>Записи кожного викладача приватні, тому сторінка працює лише після входу.</div></div>'; return; }
+  if(tab==='settings') return renderSettings(v);
+  if(!order.length){ v.innerHTML=emptyHTML(); bindEmpty(); return; }
+  if(tab==='today') return renderToday(v);
+  const c=courses[cur]; if(!c){cur=order[0];return render();}
+  if(tab==='lessons') return renderLessons(v,c);
+  if(tab==='layout') return renderLayout(v,c);
+  if(tab==='course') return renderCourse(v,c);
+}
+function emptyHTML(){
+  return '<div class="empty"><h2>Почнімо з вашого розкладу</h2>'+(kfk?'<div class="start">'+teacherSelectHTML('e-who')+'<div class="sub">Розклад коледжу станом на '+fetchedText()+'. Ви побачите свої дисципліни й зможете їх виправити перед створенням.</div></div>':'')+
+    '<ol class="steps"><li><span>Оберіть себе зі списку'+(kfk?'':' або вставте свій розклад із сайту коледжу')+'. Дисципліни, групи й пари створяться самі.</span></li>'+
+    '<li><span>У кожній дисципліні завантажте силабус (.docx чи .pdf). Тематичний план заповниться з розділу 7.1.</span></li>'+
+    '<li><span>Якщо семестр уже йде, звірте минулі пари з переліком від навчальної частини.</span></li></ol>'+
+    '<div class="row" style="justify-content:center"><button class="b'+(kfk?'':' pri')+'" id="e-sched">Вставити розклад вручну</button><button class="b" id="e-new">Додати дисципліну вручну</button>'+(owner?'<button class="b ghost" id="e-import">Імпортувати мої журнали</button>':'')+'</div></div>';
+}
+function bindEmpty(){ const w=$('#e-who'); if(w) w.addEventListener('change',()=>{ if(!w.value) return; pickTeacher(w.value); goTool('settings','t-sched'); });
+  $('#e-new').addEventListener('click',createCourse); $('#e-sched').addEventListener('click',()=>goTool('settings','t-sched')); const im=$('#e-import'); if(im) im.addEventListener('click',importSeed); }
+
+/* ----- Сьогодні ----- */
+function renderToday(v){
+  const t=todayISO(); const tm=addDays(t,1);
+  const items=[]; order.forEach(id=>{const c=courses[id]; numbered(c).forEach(({l,n})=>{ if(l.date===t||l.date===tm) items.push({c,l,n}); });});
+  items.sort((a,b)=>a.l.date<b.l.date?-1:a.l.date>b.l.date?1:(a.l.pair||0)-(b.l.pair||0));
+  const overdue=[]; order.forEach(id=>{const c=courses[id]; c.lessons.forEach(l=>{ if(l.status==='planned'&&l.date<t) overdue.push({c,l}); });});
+  overdue.sort((a,b)=>a.l.date<b.l.date?-1:1);
+  let h='<div class="panel"><h2>Сьогодні й завтра</h2>';
+  if(!items.length) h+='<div class="note">За розкладом пар немає. Якщо була заміна, внесіть її нижче або додайте пару у вкладці «Проведені пари».</div>';
+  else h+='<div class="today">'+items.map(({c,l,n})=>'<div class="tcard"><div class="when">'+(l.date===t?'сьогодні':'завтра')+' · '+DOW[parse(l.date).getDay()]+' '+dm(l.date)+(l.pair?' · '+l.pair+' пара':'')+'</div><h3>'+esc(c.title)+' · '+esc(c.groups)+'</h3><div>'+(n?'№'+n+'. ':'')+esc(l.topic)+'</div><div class="row"><span class="pill '+l.status+'">'+stLabel(l.status)+'</span>'+(l.status!=='done'?'<button class="b pri" data-done="'+c.id+'|'+l.id+'">Проведено</button>':'')+(l.status==='planned'?'<button class="b ghost" data-cancel="'+c.id+'|'+l.id+'">Скасовано</button>':'')+'</div></div>').join('')+'</div>';
+  h+=tool('t-sub','Внести заміни зі сторінки сайту',subToolHTML());
+  h+='</div>';
+  if(overdue.length){ h+='<div class="panel"><div class="row" style="justify-content:space-between"><h2>Не відмічені минулі пари: '+overdue.length+'</h2>'+(overdue.length>5?'<button class="b" id="toRec">Звірити з навчальною частиною</button>':'')+'</div><div class="note">Відмітьте, чи вони відбулися, щоб нумерація й розкладка журналу були точними. Якщо таких пар багато, швидше вставити перелік дат від навчальної частини.</div><div class="lessons">'+overdue.slice(0,30).map(({c,l})=>'<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--rule2);padding:6px 0"><span><span class="mono">'+dm(l.date)+'</span> · '+esc(c.title)+' · '+esc(c.groups)+' · '+esc(l.topic)+'</span><span class="row"><button class="b pri" data-done="'+c.id+'|'+l.id+'">Проведено</button><button class="b ghost" data-cancel="'+c.id+'|'+l.id+'">Не було</button></span></div>').join('')+'</div></div>'; }
+  v.innerHTML=h; bindActs(v); bindTools(v); bindSub(v);
+  const tr=$('#toRec'); if(tr) tr.addEventListener('click',()=>{cur=overdue[0].c.id;renderChips();goTool('lessons','t-rec');});
+}
+function subToolHTML(){
+  const date=draft.subDate||addDays(todayISO(),1);
+  let h='<div class="note">Відкрийте <a href="'+SITE.zam+'" target="_blank" rel="noopener">розпорядження про заміни</a>, виділіть таблицю від «Група» до кінця, скопіюйте й вставте сюди. Застосунок знайде рядки ваших груп і дисциплін.'+(settings.teacher?'':' Щоб розпізнавати пари, додані саме вам, вкажіть прізвище в «Налаштуваннях».')+'</div>'+
+    '<label class="f" style="max-width:11rem">Дата, на яку заміни<input type="date" id="sub-date" value="'+esc(date)+'"></label>'+
+    '<textarea id="sub-text" style="min-height:120px" placeholder="Група	Пара	–	Заміна	Ауд">'+esc(draft.subText)+'</textarea><div class="row"><button class="b" id="sub-go">Розпізнати</button></div>';
+  const s=draft.sub; if(!s) return h;
+  if(!s.length) return h+'<div class="note">Рядків, що стосуються ваших дисциплін, не знайдено.</div>';
+  h+='<div class="prev">'+s.map((x,i)=>{const c=courses[x.cid];const txt=x.type==='add'?'додати '+x.pair+' пару':'скасувати '+x.pair+' пару'+(x.lid?'':' (у журналі її немає)');
+    return '<label><input type="checkbox" data-sub="'+i+'"'+(x.type==='cancel'&&!x.lid?' disabled':' checked')+'><span><b class="op-'+x.type+'">'+txt+'</b> · '+esc(c.title)+' · '+esc(c.groups)+'<br><span class="sub">'+esc(x.row.groups.join(', '))+' · '+esc(x.row.from)+' → '+esc(x.row.to)+'</span></span></label>';}).join('')+'</div><div class="row"><button class="b pri" id="sub-apply">Застосувати на '+dm(date)+'</button></div>';
+  return h;
+}
+function bindSub(v){
+  const tx=$('#sub-text'); if(!tx) return;
+  tx.addEventListener('input',()=>{draft.subText=tx.value;});
+  $('#sub-date').addEventListener('change',e=>{draft.subDate=e.target.value;draft.sub=null;render();});
+  $('#sub-go').addEventListener('click',()=>{
+    draft.subText=tx.value; const date=$('#sub-date').value||addDays(todayISO(),1); draft.subDate=date;
+    const rows=P.parseSubstitutions(tx.value); const res=[];
+    rows.forEach(row=>order.forEach(id=>{const c=courses[id]; const ef=P.substitutionEffect(row,c,settings.teacher); if(!ef) return;
+      if(res.some(r=>r.cid===id&&r.pair===row.pair&&r.type===ef)) return;
+      const ex=c.lessons.find(l=>l.date===date&&l.status!=='cancelled'&&(l.pair===row.pair||!l.pair));
+      if(ef==='add'&&ex) return;
+      res.push({cid:id,type:ef,pair:row.pair,row,lid:ef==='cancel'&&ex?ex.id:null});}));
+    if(!rows.length) toast('Не бачу таблиці замін. Скопіюйте її разом із колонками «Група» і «Пара».');
+    draft.sub=res; render();
+  });
+  const ap=$('#sub-apply'); if(ap) ap.addEventListener('click',()=>{
+    const date=draft.subDate; const touched=new Set(); let n=0;
+    v.querySelectorAll('[data-sub]').forEach(cb=>{ if(!cb.checked) return; const x=draft.sub[Number(cb.dataset.sub)]; const c=courses[x.cid];
+      if(x.type==='cancel'){ const l=c.lessons.find(y=>y.id===x.lid); if(l){l.status='cancelled';n++;} }
+      else { c.lessons.push(lessonFromPlan(c,date,x.pair,nextPlanIdx(c))); n++; }
+      touched.add(x.cid); });
+    touched.forEach(id=>{reflow(courses[id]);scheduleSave(id);});
+    draft.sub=null; draft.subText=''; render(); toast(n?'Внесено змін: '+n:'Нічого не вибрано');
+  });
+}
+function stLabel(s){return s==='done'?'проведено':s==='cancelled'?'скасовано':'за планом';}
+function bindActs(v){
+  v.querySelectorAll('[data-done]').forEach(b=>b.addEventListener('click',()=>setSt(b.dataset.done,'done')));
+  v.querySelectorAll('[data-cancel]').forEach(b=>b.addEventListener('click',()=>setSt(b.dataset.cancel,'cancelled')));
+  v.querySelectorAll('[data-plan]').forEach(b=>b.addEventListener('click',()=>setSt(b.dataset.plan,'planned')));
+  v.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>delLesson(b.dataset.del)));
+}
+function setSt(key,st){const [cid,lid_]=key.split('|');const c=courses[cid];const l=c.lessons.find(x=>x.id===lid_);if(!l)return;const prev=l.status;l.status=st;
+  if(prev==='cancelled'||st==='cancelled') reflow(c);
+  scheduleSave(cid);render();toast(st==='done'?'Відмічено: проведено':st==='cancelled'?'Відмічено: не відбулася. Теми далі зсунулись':'Повернуто в план');}
+function delLesson(key){const [cid,lid_]=key.split('|');const c=courses[cid];const l=c.lessons.find(x=>x.id===lid_);if(!l)return;
+  const btn=document.querySelector('[data-del="'+key+'"]'); if(btn&&btn.dataset.armed!=='1'){btn.dataset.armed='1';btn.textContent='Точно?';setTimeout(()=>{if(btn.isConnected){btn.dataset.armed='';btn.textContent='Видалити';}},3000);return;}
+  c.lessons=c.lessons.filter(x=>x.id!==lid_);reflow(c);scheduleSave(cid);render();toast('Пару видалено');}
+
+/* ----- Проведені пари ----- */
+function renderLessons(v,c){
+  const nb=numbered(c); const done=c.lessons.filter(l=>l.status==='done').length; const pl=c.lessons.filter(l=>l.status==='planned').length;
+  const planN=(c.plan||[]).length;
+  let h='<div class="panel"><div class="row" style="justify-content:space-between"><div><h2>'+esc(c.title)+' · '+esc(c.groups)+'</h2><div class="sub">Проведено '+done+' · заплановано '+pl+' · '+((done+pl)*(c.hours||2))+' год разом'+(planN?' · у плані '+planN+' занять':' · тематичного плану ще немає')+'</div></div>'+
+    '<div class="row"><button class="b" id="gen">Дозаповнити за розкладом</button></div></div>'+
+    '<form class="row" id="addForm"><label class="f" style="width:9.5rem">Додати пару (заміна)<input type="date" id="addDate" required></label><label class="f" style="width:5rem">Пара<input type="number" id="addPair" min="1" max="8"></label><button class="b pri" type="submit">Додати</button></form>'+
+    tool('t-rec','Звірити з переліком пар від навчальної частини',recToolHTML(c))+
+    '<div class="note">Щоб перенести пару, натисніть на її дату. Тему можна переписати вручну; щоб повернути тему з плану, зітріть поле.</div>'+
+    '<div class="lessons"><div class="lesson lhead"><span>№</span><span>Дата</span><span class="pair">Пара</span><span>Тема</span><span>ДЗ</span><span>Колонка</span><span></span></div>';
+  nb.forEach(({l,n})=>{
+    const k=c.id+'|'+l.id;
+    h+='<div class="lesson '+l.status+'" data-l="'+l.id+'"><span class="n mono">'+(n||'—')+'</span><button class="d mono" data-mv="'+l.id+'" title="Перенести пару">'+dm(l.date)+' <span class="sub">'+DOW[parse(l.date).getDay()]+'</span></button><span class="pair mono sub">'+(l.pair||'')+'</span>'+
+      '<input class="topic" value="'+esc(l.topic)+'" aria-label="Тема" title="'+(l.custom?'Тему вписано вручну':'Тема з плану')+'">'+
+      '<input class="hw" value="'+esc(l.hw)+'" aria-label="ДЗ" placeholder="ДЗ">'+
+      '<input class="wl" value="'+esc(l.work)+'" aria-label="Колонка роботи" placeholder="ПЗ/ЛР">'+
+      '<span class="acts">'+(l.status!=='done'?'<button class="b" data-done="'+k+'" title="Проведено" aria-label="Проведено">✓</button>':'<button class="b ghost" data-plan="'+k+'" title="Повернути в план" aria-label="Повернути в план">↺</button>')+
+      (l.status!=='cancelled'?'<button class="b ghost" data-cancel="'+k+'" title="Не відбулася" aria-label="Не відбулася">✕</button>':'<button class="b ghost" data-plan="'+k+'" title="Відновити" aria-label="Відновити">↺</button>')+
+      '<button class="b ghost" data-del="'+k+'">Видалити</button></span></div>';
+  });
+  if(!nb.length) h+='<div class="note" style="padding:12px 0">Пар ще немає. Задайте базовий розклад у вкладці «Дисципліна» і натисніть «Дозаповнити за розкладом».</div>';
+  h+='</div></div>';
+  v.innerHTML=h; bindActs(v); bindTools(v); bindRec(v,c);
+  v.querySelectorAll('.lesson[data-l]').forEach(row=>{const l=c.lessons.find(x=>x.id===row.dataset.l);
+    const tp=row.querySelector('.topic');
+    tp.addEventListener('change',()=>{const val=tp.value.trim(); if(val){l.topic=val;l.custom=true;scheduleSave(c.id);} else {l.custom=false;l.planIdx=null;reflow(c);scheduleSave(c.id);render();}});
+    [['hw','hw'],['wl','work']].forEach(([cls,f])=>{const inp=row.querySelector('.'+cls);inp.addEventListener('change',()=>{l[f]=inp.value.trim();scheduleSave(c.id);});});});
+  v.querySelectorAll('[data-mv]').forEach(b=>b.addEventListener('click',()=>openMove(c,b.dataset.mv,b.closest('.lesson'))));
+  $('#gen').addEventListener('click',()=>{const n=generate(c,c.lessons.length?todayISO():(c.semStart||todayISO()));if(n){scheduleSave(c.id);render();toast('Додано пар за розкладом: '+n);}else toast('Нових пар за розкладом немає до кінця семестру');});
+  $('#addForm').addEventListener('submit',e=>{e.preventDefault();const d=$('#addDate').value;if(!d)return;const pr=Number($('#addPair').value)||null;c.lessons.push(lessonFromPlan(c,d,pr,nextPlanIdx(c)));reflow(c);scheduleSave(c.id);render();toast('Пару додано, теми далі зсунулись');});
+}
+function openMove(c,id,row){
+  const old=document.querySelector('.mv'); if(old){const same=old.dataset.for===id; old.remove(); if(same) return;}
+  const l=c.lessons.find(x=>x.id===id); if(!l) return;
+  const f=document.createElement('form'); f.className='mv'; f.dataset.for=id;
+  f.innerHTML='<label class="f" style="width:9.5rem">Перенести на<input type="date" required value="'+l.date+'"></label><label class="f" style="width:5rem">Пара<input type="number" min="1" max="8" value="'+(l.pair||'')+'"></label><button class="b pri" type="submit">Перенести</button><button class="b ghost" type="button">Скасувати</button>';
+  row.after(f); const [di,pi]=f.querySelectorAll('input'); di.focus();
+  f.querySelector('button[type=button]').addEventListener('click',()=>f.remove());
+  f.addEventListener('submit',e=>{e.preventDefault(); if(!di.value) return; l.date=di.value; l.pair=Number(pi.value)||null; reflow(c); scheduleSave(c.id); render(); toast('Пару перенесено на '+dm(l.date));});
+}
+function recToolHTML(c){
+  const d=draft.rec[c.id]||{text:''};
+  let h='<div class="note">Вставте дати, коли пари цієї дисципліни реально відбулися: з журналу навчальної частини чи табеля. По одній у рядку або через кому, можна з номером пари: <span class="mono">02.09</span>, <span class="mono">16.09 3 пара</span>. Порівнюється лише проміжок від першої до останньої дати переліку.</div>'+
+    '<textarea id="rec-text" style="min-height:110px" placeholder="02.09&#10;09.09&#10;16.09 3 пара">'+esc(d.text)+'</textarea><div class="row"><button class="b" id="rec-go">Порівняти</button></div>';
+  if(!d.ops) return h;
+  if(!d.ops.length) return h+'<div class="note">Усе збігається: з '+dm(d.from)+' по '+dm(d.to)+' пари в журналі відповідають переліку.</div>';
+  const lbl={add:'додати як проведену',done:'відмітити проведеною',cancel:'скасувати: немає в переліку',restore:'відновити: є в переліку'};
+  h+='<div class="sub">З '+dm(d.from)+' по '+dm(d.to)+': розбіжностей '+d.ops.length+'</div><div class="prev">'+d.ops.map((o,i)=>'<label><input type="checkbox" data-op="'+i+'" checked><span><span class="mono">'+dm(o.date)+(o.pair?' · '+o.pair+' п.':'')+'</span> · <b class="op-'+o.type+'">'+lbl[o.type]+'</b>'+(o.topic?' · <span class="sub">'+esc(o.topic)+'</span>':'')+'</span></label>').join('')+'</div><div class="row"><button class="b pri" id="rec-apply">Застосувати вибране</button></div>';
+  return h;
+}
+function reconcile(c,items){
+  const t=todayISO(); const ds=items.map(x=>x.date).sort(); const from=ds[0], to=ds[ds.length-1];
+  const inRange=sorted(c).filter(l=>l.date>=from&&l.date<=to); const used=new Set(); const ops=[];
+  items.slice().sort((a,b)=>a.date<b.date?-1:1).forEach(it=>{
+    const cand=inRange.filter(l=>!used.has(l.id)&&l.date===it.date&&(it.pair==null||l.pair==null||l.pair===it.pair)).sort((a,b)=>(a.status==='cancelled')-(b.status==='cancelled'));
+    const l=cand[0];
+    if(!l){ ops.push({type:'add',date:it.date,pair:it.pair}); return; }
+    used.add(l.id);
+    if(l.status==='cancelled') ops.push({type:it.date<=t?'done':'restore',date:l.date,pair:l.pair,lid:l.id,topic:l.topic,fromCancel:true});
+    else if(l.status==='planned'&&it.date<=t) ops.push({type:'done',date:l.date,pair:l.pair,lid:l.id,topic:l.topic});
+  });
+  inRange.forEach(l=>{ if(!used.has(l.id)&&l.status!=='cancelled') ops.push({type:'cancel',date:l.date,pair:l.pair,lid:l.id,topic:l.topic}); });
+  ops.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  return {from,to,ops};
+}
+function bindRec(v,c){
+  const tx=$('#rec-text'); if(!tx) return;
+  tx.addEventListener('input',()=>{(draft.rec[c.id]=draft.rec[c.id]||{}).text=tx.value;});
+  $('#rec-go').addEventListener('click',()=>{
+    const items=P.parseDateList(tx.value); if(!items.length){toast('Не бачу жодної дати. Формат: 02.09 або 02.09.2026');return;}
+    draft.rec[c.id]=Object.assign({text:tx.value},reconcile(c,items)); render();
+  });
+  const ap=$('#rec-apply'); if(ap) ap.addEventListener('click',()=>{
+    const d=draft.rec[c.id]; const t=todayISO(); const chosen=[]; v.querySelectorAll('[data-op]').forEach(cb=>{if(cb.checked) chosen.push(d.ops[Number(cb.dataset.op)]);});
+    const markDone=[];
+    chosen.forEach(o=>{
+      if(o.type==='add'){ const l=lessonFromPlan(c,o.date,o.pair,nextPlanIdx(c)); c.lessons.push(l); if(o.date<=t) markDone.push(l.id); }
+      else { const l=c.lessons.find(x=>x.id===o.lid); if(!l) return;
+        if(o.type==='cancel') l.status='cancelled';
+        else if(o.type==='restore') l.status='planned';
+        else if(o.type==='done'){ if(l.status==='cancelled') l.status='planned'; markDone.push(l.id); } }
+    });
+    reflow(c);                                    // спершу теми стають у чергу, потім пари позначаємо проведеними
+    markDone.forEach(id=>{const l=c.lessons.find(x=>x.id===id); if(l) l.status='done';});
+    delete draft.rec[c.id]; scheduleSave(c.id); render(); toast('Звірено: змін '+chosen.length);
+  });
+}
+
+/* ----- Розкладка журналу ----- */
+function renderLayout(v,c){
+  const {spreads,COLS}=layout(c);
+  let h='<div class="panel"><div class="row" style="justify-content:space-between"><div><h2>Розкладка журналу · '+esc(c.title)+'</h2><div class="sub">Розворотів: '+spreads.length+' · '+COLS+' колонок на лівій сторінці, до '+(c.rows||20)+' рядків на правій</div></div>'+
+    ((downloads||local)?'<button class="b pri" id="dl">Зберегти для друку</button>':'')+'</div>'+
+    '<div class="legend"><span>дата</span><span style="background:var(--work)">оцінка за ПЗ/ЛР</span><span style="background:var(--att)">атестація / перездача</span><span style="background:var(--fin)">підсумкові</span><span style="background:var(--plan)">ще за планом</span></div>'+
+    '<div class="note">Практичне чи лабораторне займає дві колонки: дату й колонку оцінки. Після дати атестації стоїть «Атест.» і чиста колонка для перездачі; у кінці «Сем.», перездача'+(c.exam?', «Іспит», перездача':'')+' і «П». Заняття, яке не влазить, переходить на наступний розворот.</div></div>';
+  h+=spreads.map((s,i)=>spreadHTML(c,s,i+1,COLS)).join('');
+  v.innerHTML=h;
+  const b=$('#dl'); if(b) b.addEventListener('click',()=>saveLayout(c));
+}
+async function saveLayout(c){
+  const {spreads,COLS}=layout(c);
+  const css=document.querySelector('style').textContent;
+  const doc='<!doctype html><html lang="uk"><head><meta charset="utf-8"><title>Журнал — '+esc(c.title)+'</title><style>'+css+'@page{size:A4 landscape;margin:8mm}@media print{.spread{break-after:page}}</style></head><body><div class="wrap"><h1>'+esc(c.title)+' · '+esc(c.groups)+'</h1>'+spreads.map((s,i)=>spreadHTML(c,s,i+1,COLS)).join('')+'</div></body></html>';
+  const r=await saveFile('zhurnal_'+(c.short||c.id)+'.html',doc,'text/html');
+  if(r==='saved') toast('Файл збережено. Відкрийте його в браузері й надрукуйте.'); else if(r===null) toast('Файл не збережено');
+}
+
+/* ----- Дисципліна ----- */
+function renderCourse(v,c){
+  const planText=(c.plan||[]).map(p=>(p.label||'Л')+' | '+p.title+(p.hw?' | '+p.hw:'')).join('\n');
+  let h='<div class="panel"><h2>Дисципліна</h2><div class="grid2">'+
+   fld('c-title','Назва',c.title)+fld('c-groups','Групи',c.groups)+fld('c-short','Коротка назва файлу',c.short||'')+
+   fld('c-start','Початок семестру',c.semStart||'','date')+fld('c-end','Кінець семестру',c.semEnd||'','date')+fld('c-att','Атестація до (включно)',c.attDate||'','date')+
+   fld('c-cols','Колонок на лівій сторінці',c.cols||18,'number')+fld('c-rows','Рядків на правій сторінці',c.rows||20,'number')+fld('c-hours','Годин за пару',c.hours||2,'number')+
+   '<label class="f">Чисельник/знаменник: тиждень, що містить<input type="date" id="c-pref" value="'+esc(c.parityRef||settings.parityRef)+'"></label>'+
+   '<label class="f">цей тиждень —<select id="c-pis"><option value="num"'+((c.parityRefIs||'num')==='num'?' selected':'')+'>чисельник</option><option value="den"'+(c.parityRefIs==='den'?' selected':'')+'>знаменник</option></select></label>'+
+   '<label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="c-exam"'+(c.exam?' checked':'')+'> Є іспит</label></div>'+
+   '<h3>Базовий розклад</h3><div class="sched" id="sched"></div><div><button class="b" id="addSched">+ Рядок розкладу</button></div>'+
+   '<h3>Тематичний план</h3>'+tool('t-syl','Заповнити план із силабусу',sylToolHTML(c))+
+   '<div class="note">Один рядок — одне заняття: <span class="mono">позначка | тема | ДЗ</span>. Позначка: Л — лекція, Т — тест, ПЗ1 / ЛР1 / ІЗ — робота з окремою колонкою оцінки. Майбутні пари беруть теми з плану по черзі.</div>'+
+   '<textarea id="c-plan" spellcheck="false">'+esc(planText)+'</textarea>'+
+   '<div class="row"><button class="b pri" id="saveCourse">Зберегти дисципліну</button><button class="b ghost" id="delCourse">Видалити дисципліну</button></div></div>';
+  v.innerHTML=h; bindTools(v); bindSyl(v,c);
+  const sched=c.schedule?c.schedule.map(r=>Object.assign({},r)):[];
+  const drawS=()=>{$('#sched').innerHTML=sched.map((r,i)=>'<div class="r"><select aria-label="День" data-i="'+i+'" data-f="dow">'+[1,2,3,4,5,6].map(d=>'<option value="'+d+'"'+(Number(r.dow)===d?' selected':'')+'>'+DOWF[d]+'</option>').join('')+'</select><select aria-label="Пара" data-i="'+i+'" data-f="pair">'+[1,2,3,4,5,6,7].map(p=>'<option value="'+p+'"'+(Number(r.pair)===p?' selected':'')+'>'+p+' пара</option>').join('')+'</select><select aria-label="Тиждень" data-i="'+i+'" data-f="parity">'+Object.keys(PAR).map(k=>'<option value="'+k+'"'+(r.parity===k?' selected':'')+'>'+PAR[k]+'</option>').join('')+'</select><button class="b ghost" data-rm="'+i+'">Прибрати</button></div>').join('')||'<div class="note">Немає рядків розкладу.</div>';
+    $('#sched').querySelectorAll('select').forEach(s=>s.addEventListener('change',()=>{sched[s.dataset.i][s.dataset.f]=s.dataset.f==='parity'?s.value:Number(s.value);}));
+    $('#sched').querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click',()=>{sched.splice(Number(b.dataset.rm),1);drawS();}));};
+  drawS();
+  $('#addSched').addEventListener('click',()=>{sched.push({dow:1,pair:1,parity:'all'});drawS();});
+  $('#saveCourse').addEventListener('click',()=>{
+    c.title=$('#c-title').value.trim()||'Без назви'; c.groups=$('#c-groups').value.trim(); c.short=$('#c-short').value.trim();
+    c.semStart=$('#c-start').value; c.semEnd=$('#c-end').value; c.attDate=$('#c-att').value;
+    c.cols=Number($('#c-cols').value)||18; c.rows=Number($('#c-rows').value)||20; c.hours=Number($('#c-hours').value)||2;
+    c.parityRef=$('#c-pref').value||settings.parityRef; c.parityRefIs=$('#c-pis').value; c.exam=$('#c-exam').checked; c.schedule=sched;
+    const oldPlan=JSON.stringify(c.plan||[]);
+    c.plan=$('#c-plan').value.split('\n').map(s=>s.trim()).filter(Boolean).map(s=>{const p=s.split('|').map(x=>x.trim());return {label:p[0]||'Л',title:p[1]||p[0],hw:p[2]||''};});
+    if(JSON.stringify(c.plan)!==oldPlan) reflow(c);
+    scheduleSave(c.id); renderChips(); toast('Дисципліну збережено');
+  });
+  $('#delCourse').addEventListener('click',async e=>{const b=e.currentTarget;if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Натисніть ще раз, щоб видалити назавжди';return;}
+    try{await store.del(c.id);}catch(err){toast('Не вдалося видалити');return;}
+    delete courses[c.id]; order=order.filter(x=>x!==c.id); cur=order[0]||null; renderChips(); setTab('today'); toast('Дисципліну видалено');});
+}
+function fld(id,label,val,type){return '<label class="f">'+label+'<input id="'+id+'" type="'+(type||'text')+'" value="'+esc(val)+'"></label>';}
+
+/* силабус → тематичний план */
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('Не вдалося завантажити бібліотеку'));document.head.appendChild(s);});}
+async function docxText(buf){
+  if(!window.JSZip) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+  const z=await window.JSZip.loadAsync(buf); const f=z.file('word/document.xml'); if(!f) throw new Error('Це не документ Word (.docx)');
+  const d=new DOMParser().parseFromString(await f.async('string'),'application/xml');
+  const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main'; const out=[];
+  const ptext=p=>Array.from(p.getElementsByTagNameNS(W,'t')).map(t=>t.textContent).join('');
+  const walk=el=>{ for(const ch of Array.from(el.children)){
+    if(ch.localName==='p') out.push(ptext(ch));
+    else if(ch.localName==='tbl'){ for(const tr of Array.from(ch.children)){ if(tr.localName!=='tr') continue;
+      out.push(Array.from(tr.children).filter(x=>x.localName==='tc').map(tc=>Array.from(tc.getElementsByTagNameNS(W,'p')).map(ptext).join('\n')).join(' ')); } }
+    else if(ch.localName==='sdt'){ const sc=ch.getElementsByTagNameNS(W,'sdtContent')[0]; if(sc) walk(sc); } } };
+  walk(d.getElementsByTagNameNS(W,'body')[0]); return out.join('\n');
+}
+async function pdfText(buf){
+  if(!window.pdfjsLib){ await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'); await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'); }
+  const doc=await window.pdfjsLib.getDocument({data:new Uint8Array(buf),isEvalSupported:false}).promise; const lines=[];
+  for(let p=1;p<=doc.numPages;p++){ const tc=await (await doc.getPage(p)).getTextContent(); const rows=[];
+    tc.items.forEach(it=>{ if(!it.str) return; const y=it.transform[5]; let r=rows.find(r=>Math.abs(r.y-y)<=2.5); if(!r){r={y,items:[]};rows.push(r);}
+      r.items.push({x:it.transform[4],w:it.width||0,h:Math.abs(it.transform[3])||it.height||10,s:it.str}); });
+    // pdf.js ріже слова й номери на шматки («Л», «1», «1.»): пробіл ставимо лише там, де між шматками є проміжок
+    rows.sort((a,b)=>b.y-a.y).forEach(r=>{ let t='', end=null;
+      r.items.sort((a,b)=>a.x-b.x).forEach(i=>{ if(!i.s.trim()){ t+=' '; end=i.x+i.w; return; }
+        if(end!==null && i.x-end>i.h*0.18 && !/\s$/.test(t)) t+=' ';
+        t+=i.s; end=i.x+i.w; });
+      lines.push(t.replace(/\s+/g,' ').trim()); }); }
+  return lines.join('\n');
+}
+function sylToolHTML(c){
+  const d=draft.syl[c.id]||{};
+  let h='<div class="note">Підходить силабус КФК єдиної форми: заняття беруться з розділу «7.1 Види навчальних занять» (Л, ПЗ, ЛР). Файл .docx або .pdf; старий .doc спершу збережіть у Word як .docx. Можна й скопіювати текст розділу 7.1 та вставити.</div>'+
+    '<div class="row"><input type="file" id="syl-file" accept=".docx,.pdf,.txt" aria-label="Файл силабусу" style="max-width:24rem"><span class="sub" id="syl-st">'+esc(d.status||'')+'</span></div>'+
+    '<textarea id="syl-text" style="min-height:90px" placeholder="…або вставте текст розділу 7.1">'+esc(d.paste||'')+'</textarea><div class="row"><button class="b" id="syl-parse">Розпізнати вставлений текст</button></div>';
+  if(!d.sems) return h;
+  if(!d.sems.length) return h+'<div class="note">Не знайшов пунктів «Л 1.», «ПЗ 1.» у розділі 7.1. Перевірте, що це силабус єдиної форми, або вставте потрібний шматок тексту вручну.</div>';
+  const si=Math.min(d.semIdx||0,d.sems.length-1); const sem=d.sems[si]; const plan=P.planFromSemester(sem);
+  const cnt=k=>sem.items.filter(i=>i.kind===k).length; const done=c.lessons.filter(l=>l.status==='done').length; const total=c.lessons.filter(l=>l.status!=='cancelled').length;
+  h+='<div class="grid2"><label class="f">Семестр<select id="syl-sem">'+d.sems.map((s,i)=>'<option value="'+i+'"'+(i===si?' selected':'')+'>'+(s.n?'Семестр '+s.n:'Без семестру')+': '+P.planFromSemester(s).length+' занять</option>').join('')+'</select></label>'+
+    '<label class="f">Майбутні пари почати з заняття №<input type="number" id="syl-start" min="1" max="'+plan.length+'" value="'+Math.min(done+1,plan.length)+'"></label></div>'+
+    '<div class="sub">Лекцій '+cnt('Л')+', практичних '+cnt('ПЗ')+', лабораторних '+cnt('ЛР')+' · '+plan.length+' занять = '+(plan.length*(c.hours||2))+' год. У журналі зараз '+total+' пар, із них проведено '+done+'.</div>'+
+    '<div class="prev">'+plan.map((p,i)=>'<div class="pl"><span class="mono sub">'+(i+1)+'</span><span>'+esc(p.title)+'</span><span class="mono sub">'+esc(p.label==='Л'?'':p.label)+'</span></div>').join('')+'</div>'+
+    '<div class="row"><button class="b pri" id="syl-apply">Замінити тематичний план</button><span class="sub">Проведені пари й теми, вписані вручну, не зміняться.</span></div>';
+  return h;
+}
+function bindSyl(v,c){
+  const d=draft.syl[c.id]=draft.syl[c.id]||{};
+  const pickSem=sems=>{ const autumn=new Date().getMonth()>=7; const i=sems.findIndex(s=>s.n&&(s.n%2===1)===autumn); return i<0?0:i; };
+  const done=(sems,status)=>{d.sems=sems;d.semIdx=pickSem(sems);d.status=status;openTools.add('t-syl');render();};
+  $('#syl-text').addEventListener('input',e=>{d.paste=e.target.value;});
+  $('#syl-file').addEventListener('change',async e=>{
+    const f=e.target.files&&e.target.files[0]; if(!f) return; const st=$('#syl-st'); st.textContent='читаю '+f.name+'…';
+    try{
+      const name=f.name.toLowerCase(); let text;
+      if(name.endsWith('.doc')) throw new Error('Старий формат .doc: збережіть файл у Word як .docx');
+      if(name.endsWith('.docx')) text=await docxText(await f.arrayBuffer());
+      else if(name.endsWith('.pdf')) text=await pdfText(await f.arrayBuffer());
+      else text=await f.text();
+      const sems=P.parseSyllabus(text); done(sems,f.name+': знайдено '+sems.reduce((a,s)=>a+s.items.length,0)+' пунктів');
+    }catch(err){ st.textContent=(err&&err.message)||'Не вдалося прочитати файл'; }
+  });
+  $('#syl-parse').addEventListener('click',()=>{const t=$('#syl-text').value; if(!t.trim()){toast('Вставте текст розділу 7.1');return;} done(P.parseSyllabus(t),'з вставленого тексту');});
+  const ss=$('#syl-sem'); if(ss) ss.addEventListener('change',()=>{d.semIdx=Number(ss.value);render();});
+  const ap=$('#syl-apply'); if(ap) ap.addEventListener('click',()=>{
+    const sem=d.sems[d.semIdx||0]; const plan=P.planFromSemester(sem).map(p=>({label:p.label,title:p.title,hw:p.hw}));
+    const start=Math.max(1,Math.min(Number($('#syl-start').value)||1,plan.length))-1;
+    c.plan=plan; reflow(c,start); delete draft.syl[c.id]; openTools.delete('t-syl'); scheduleSave(c.id); render(); toast('План замінено: '+plan.length+' занять');
+  });
+}
+
+/* ----- Налаштування ----- */
+function renderSettings(v){
+  const s=settings;
+  let h='<div class="panel"><h2>Викладач і семестр</h2><div class="note">Ці значення підставляються в нові дисципліни. Прізвище потрібне, щоб серед замін розпізнавати пари, додані саме вам.</div><div class="grid2">'+
+    fld('s-teacher','Прізвище та ініціали, як на сайті',s.teacher)+fld('s-start','Початок семестру',s.semStart,'date')+fld('s-end','Кінець семестру',s.semEnd,'date')+fld('s-att','Атестація до (включно)',s.attDate,'date')+
+    '<label class="f">Чисельник/знаменник: тиждень, що містить<input type="date" id="s-pref" value="'+esc(s.parityRef)+'"></label>'+
+    '<label class="f">цей тиждень —<select id="s-pis"><option value="num"'+(s.parityRefIs==='num'?' selected':'')+'>чисельник</option><option value="den"'+(s.parityRefIs==='den'?' selected':'')+'>знаменник</option></select></label></div>'+
+    '<div class="row"><button class="b pri" id="s-save">Зберегти</button>'+(order.length?'<label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="s-all"> застосувати семестр, атестацію й чисельник до всіх дисциплін</label>':'')+'</div></div>';
+  h+='<div class="panel">'+tool('t-sched','Розклад із сайту коледжу',schedToolHTML())+'</div>';
+  h+='<div class="panel"><h2>Резервна копія</h2><div class="note">Один файл з усіма дисциплінами, планами й парами. Ним можна перенести журнал на інший пристрій або відновити записи після помилки.</div><div class="row">'+((downloads||local)?'<button class="b" id="s-exp">Завантажити копію</button>':'')+'<label class="b" style="cursor:pointer">Відновити з файлу<input type="file" id="s-imp" accept=".json,application/json" hidden></label></div>'+backupHTML()+'</div>';
+  h+='<div class="panel"><h2>Про записи</h2><div class="note">'+(local?'Сторінка відкрита поза claude.ai, тому записи зберігаються лише в цьому браузері на цьому пристрої. Регулярно завантажуйте резервну копію.':'Записи зберігаються у вашому приватному розділі: колеги, які відкриють це посилання, бачать лише свої дисципліни, а ви — лише свої.')+'</div></div>';
+  v.innerHTML=h; bindTools(v); bindSched(v);
+  $('#s-save').addEventListener('click',()=>{
+    s.teacher=$('#s-teacher').value.trim(); s.semStart=$('#s-start').value||s.semStart; s.semEnd=$('#s-end').value||s.semEnd; s.attDate=$('#s-att').value; s.parityRef=$('#s-pref').value||s.parityRef; s.parityRefIs=$('#s-pis').value;
+    scheduleSave('_settings');
+    const all=$('#s-all'); if(all&&all.checked){ order.forEach(id=>{const c=courses[id]; c.semStart=s.semStart;c.semEnd=s.semEnd;c.attDate=s.attDate;c.parityRef=s.parityRef;c.parityRefIs=s.parityRefIs;scheduleSave(id);}); }
+    toast('Налаштування збережено');
+  });
+  const ex=$('#s-exp'); if(ex) ex.addEventListener('click',async()=>{
+    const data=JSON.stringify({app:'zhurnal-vykladacha',version:1,saved:new Date().toISOString(),settings,courses:order.map(id=>courses[id])},null,1);
+    const r=await saveFile('zhurnal_kopiya_'+todayISO()+'.json',data,'application/json'); if(r==='saved') toast('Копію збережено'); else if(r===null) toast('Копію не збережено');
+  });
+  $('#s-imp').addEventListener('change',async e=>{const f=e.target.files&&e.target.files[0]; if(!f) return;
+    try{ const j=JSON.parse(await f.text()); if(!j||!Array.isArray(j.courses)) throw 0; draft.backup=j; render(); }catch(err){ toast('Це не резервна копія журналу'); } });
+  const ri=$('#s-restore'); if(ri) ri.addEventListener('click',()=>{
+    const j=draft.backup; let n=0; j.courses.forEach(c0=>{ if(!c0||!Array.isArray(c0.lessons)) return; const c=JSON.parse(JSON.stringify(c0)); const id=c.id||newId(); c.id=id; courses[id]=c; if(!order.includes(id)) order.push(id); scheduleSave(id); n++; });
+    if(j.settings){ settings=Object.assign(settings,j.settings); scheduleSave('_settings'); }
+    draft.backup=null; cur=cur||order[0]; renderChips(); render(); toast('Відновлено дисциплін: '+n);
+  });
+  const rc=$('#s-restore-x'); if(rc) rc.addEventListener('click',()=>{draft.backup=null;render();});
+}
+function backupHTML(){
+  const j=draft.backup; if(!j) return '';
+  const same=j.courses.filter(c=>c&&courses[c.id]).length;
+  return '<div class="note">У файлі '+j.courses.length+' дисциплін'+(j.saved?' від '+esc(String(j.saved).slice(0,10)):'')+'. '+(same?'Дисципліни, які вже є тут ('+same+'), буде замінено версією з файлу.':'Їх буде додано до наявних.')+'</div><div class="row"><button class="b pri" id="s-restore">Відновити</button><button class="b ghost" id="s-restore-x">Скасувати</button></div>';
+}
+function schedToolHTML(){
+  let h='';
+  if(kfk) h+=teacherSelectHTML('s-who')+'<div class="sub">Розклад коледжу станом на '+fetchedText()+'. Якщо відтоді він змінився, вставте таблицю з сайту вручну (нижче).</div>';
+  h+=(kfk?'<details class="tool inner" id="t-paste"'+(openTools.has('t-paste')?' open':'')+'><summary>Вставити розклад із сайту вручну</summary><div class="tbody">':'')+'<ol class="steps left"><li><span>Відкрийте <a href="'+SITE.college+'" target="_blank" rel="noopener">розклад викладача коледжу</a>, оберіть себе й натисніть OK.</span></li>'+
+    '<li><span>Виділіть таблицю мишею від «Предмет» до останнього рядка, скопіюйте й вставте нижче.</span></li>'+
+    '<li><span>Натисніть «Розпізнати», перевірте назви й номери пар і створіть дисципліни.</span></li></ol>'+
+    '<textarea id="s-sched" style="min-height:140px" placeholder="Предмет	Викладач	Група	Ауд.	Пара	День">'+esc(draft.schedText)+'</textarea><div class="row"><button class="b" id="s-parse">Розпізнати</button></div>'+(kfk?'</div></details>':'');
+  const cl=draft.sched; if(!cl) return h;
+  if(!cl.length) return h+'<div class="note">'+(draft.schedFrom?'У розкладі '+esc(draft.schedFrom)+' немає пар.':'Не бачу рядків розкладу. Скопіюйте таблицю разом із колонками «Пара» і «День».')+'</div>';
+  h+='<div class="sub">'+(draft.schedFrom?esc(draft.schedFrom)+': ':'')+'знайдено дисциплін '+cl.length+'. Перевірте назви, групи й пари; зніміть позначку з того, що вести тут не треба.</div><div class="prev">';
+  cl.forEach((x,i)=>{
+    const match=order.find(id=>P.groupsOverlap(courses[id].groups,x.groups)&&P.nameMatch(courses[id].title,x.subject));
+    h+='<div class="cl"><input type="checkbox" data-ci="'+i+'" checked aria-label="Взяти"><div class="grid2" style="gap:6px"><label class="f">Назва<input data-ct="'+i+'" value="'+esc(x.subject)+'"></label><label class="f">Групи<input data-cg="'+i+'" value="'+esc(x.groups)+'"></label></div>'+
+      '<label class="f">'+x.slots.map(slotText).join(' · ')+(x.aud?' · ауд. '+esc(x.aud):'')+'<select data-cs="'+i+'"><option value="new">створити нову дисципліну</option>'+order.map(id=>'<option value="'+id+'"'+(id===match?' selected':'')+'>оновити розклад: '+esc(courses[id].title)+' · '+esc(courses[id].groups)+'</option>').join('')+'</select></label></div>';
+  });
+  h+='</div><label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="s-gen" checked> для нових дисциплін одразу створити пари з '+dm(settings.semStart)+' до '+dm(settings.semEnd)+'</label>'+
+    '<label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="s-rebuild" checked> для наявних перебудувати майбутні пари за новим розкладом (проведені не зміняться)</label>'+
+    '<div class="row"><button class="b pri" id="s-apply">Застосувати розклад</button></div>';
+  return h;
+}
+function bindSched(v){
+  const tx=$('#s-sched'); if(!tx) return;
+  tx.addEventListener('input',()=>{draft.schedText=tx.value;});
+  const who=$('#s-who'); if(who) who.addEventListener('change',()=>{ if(!who.value){draft.sched=null;render();return;} pickTeacher(who.value); const t=$('#s-teacher'); if(t) t.value=who.value; render(); });
+  $('#s-parse').addEventListener('click',()=>{draft.schedText=tx.value; draft.schedFrom=''; draft.sched=P.clusterCourses(P.parseTeacherSchedule(tx.value)); render();});
+  const ap=$('#s-apply'); if(!ap) return;
+  ap.addEventListener('click',()=>{
+    const gen=$('#s-gen').checked, rebuild=$('#s-rebuild').checked; let made=0, upd=0;
+    draft.sched.forEach((x,i)=>{
+      if(!v.querySelector('[data-ci="'+i+'"]').checked) return;
+      const title=v.querySelector('[data-ct="'+i+'"]').value.trim()||x.subject, groups=v.querySelector('[data-cg="'+i+'"]').value.trim()||x.groups, target=v.querySelector('[data-cs="'+i+'"]').value;
+      const slots=x.slots.map(s=>({dow:s.dow,pair:s.pair,parity:s.parity}));
+      if(target==='new'){ const c=newCourse({title,groups,schedule:slots,aud:x.aud||''}); if(gen) generate(c,c.semStart); made++; cur=cur||c.id; }
+      else { const c=courses[target]; c.schedule=slots; if(rebuild){ const t=todayISO(); c.lessons=c.lessons.filter(l=>!(l.status==='planned'&&l.date>t&&!l.custom)); generate(c,addDays(t,1)); reflow(c); } scheduleSave(c.id); upd++; }
+    });
+    draft.sched=null; draft.schedText=''; draft.schedFrom=''; openTools.delete('t-sched'); if(!cur) cur=order[0]; renderChips(); render();
+    toast('Створено дисциплін: '+made+(upd?', оновлено: '+upd:'')+'. Далі: силабус у вкладці «Дисципліна»');
+  });
+}
+
+function teacherSelectHTML(id){
+  if(!kfk) return '';
+  const names=Object.keys(kfk.teachers).sort((a,b)=>a.localeCompare(b,'uk'));
+  return '<label class="f who">Хто ви?<select id="'+id+'"><option value="">— оберіть себе зі списку викладачів коледжу —</option>'+names.map(n=>'<option'+(n===settings.teacher?' selected':'')+'>'+esc(n)+'</option>').join('')+'</select></label>';
+}
+function pickTeacher(name){
+  settings.teacher=name; scheduleSave('_settings');
+  const rows=(kfk&&kfk.teachers[name])||[];
+  draft.schedText=''; draft.schedFrom=name;
+  draft.sched=P.clusterCourses(P.parseTeacherSchedule(rows.map(r=>r.join('\t')).join('\n')));
+}
+function fetchedText(){ if(!kfk||!kfk.fetched) return ''; const [y,m,d]=kfk.fetched.split('-'); return d+'.'+m+'.'+y; }
+function createCourse(){ const c=newCourse(); cur=c.id; renderChips(); setTab('course'); }
+async function importSeed(){
+  try{
+    const snap=await db.collection('seed').get(); if(snap.empty){toast('Немає даних для імпорту');return;}
+    for(const d of snap.docs){ const c=JSON.parse(JSON.stringify(d.data())); const id=d.id; c.id=id; courses[id]=c; if(!order.includes(id)) order.push(id); await store.set(id,c); }
+    cur=order[0]; renderChips(); render(); toast('Імпортовано дисциплін: '+snap.size);
+  }catch(e){toast('Не вдалося імпортувати');}
+}
+
+/* ---------- boot ---------- */
+render();
+// знімок розкладу необов'язковий: без нього лишається ручна вставка; старт не чекає довше 4 с
+const kfkLoad=Promise.race([
+  (typeof fetch==='function'?fetch('kfk_rozklad.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null).then(j=>{ if(j&&j.teachers) kfk=j; }):Promise.resolve()).catch(()=>{}),
+  new Promise(r=>setTimeout(r,4000))]);
+(async()=>{
+  const cl=window.claude;
+  local=!(cl&&typeof cl.use==='function');
+  if(!local){
+    try{ [db,user,downloads]=await Promise.all([cl.use('db'),cl.use('user'),cl.use('downloads')]); }catch(e){}
+    if(user){ try{uid=await user.id();}catch(e){} try{owner=!!(await user.isOwner());}catch(e){} }
+  } else uid='local';
+  await kfkLoad;
+  booted=true;
+  if(!local&&(!db||!uid)){ setStatus('офлайн'); render(); return; }
+  try{
+    const docs=await store.all();
+    docs.forEach(({id,data})=>{
+      if(id==='_settings'){ if(data) settings=Object.assign(settings,data); return; }
+      if(!data||!Array.isArray(data.lessons)) return;
+      const c=JSON.parse(JSON.stringify(data)); c.id=id; courses[id]=c; });
+    order=Object.keys(courses).sort((a,b)=>(courses[a].created||0)-(courses[b].created||0));
+    let saved=null; try{saved=localStorage.getItem('zh_cur');}catch(e){}
+    cur=order.includes(saved)?saved:order[0]||null;
+    setStatus(local?'записи в цьому браузері':(order.length?'збережено':''));
+  }catch(e){ setStatus('помилка читання'); }
+  renderChips(); render();
+})();
+})();
+</script>
+</body>
+</html>
