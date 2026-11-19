@@ -56,6 +56,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .empty{border:1px dashed var(--rule);border-radius:10px;padding:24px;text-align:center;color:var(--mut);display:flex;flex-direction:column;gap:10px;align-items:center}
 .pill{display:inline-block;border-radius:999px;padding:1px 8px;font:600 11px var(--f-body);letter-spacing:.02em;border:1px solid currentColor}
+.pill.att{color:var(--warn)}
+.attsep{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--att);border-radius:6px;padding:4px 10px;margin:4px 0;font-size:13px}
+.lp td .wn{font-weight:700;margin-inline-start:8px}
+button.att-b[aria-pressed="true"]{background:var(--att);border-color:var(--warn);color:var(--ink)}
 .pill.done{color:var(--done)} .pill.planned{color:var(--mut)} .pill.cancelled{color:var(--cancel)}
 .lessons{display:flex;flex-direction:column}
 .lesson{display:grid;grid-template-columns:2.4rem 4.6rem 2rem minmax(0,1fr) minmax(0,.6fr) 4.6rem auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--rule2)}
@@ -301,12 +305,15 @@ const P=window.ZhParsers;
 const DOW=['нд','пн','вт','ср','чт','пт','сб'];
 const DOWF=['','Понеділок','Вівторок','Середа','Четвер','П\'ятниця','Субота'];
 const PAR={all:'щотижня',num:'чисельник',den:'знаменник'};
+const WS={separate:'окремий стовпчик після дня: замість дати номер роботи',above:'номер роботи над датою, оцінка в клітинці того ж дня'};
+function workStyle(c){return c.workStyle||settings.workStyle||'separate';}
+
 const SITE={
   college:'https://kfk.sumdu.edu.ua/studentu/rozklad-dlia-vykladacha-koledzhu/',
   zam:'https://kfk.sumdu.edu.ua/studentu/zaminy/'
 };
 let db=null, user=null, uid=null, owner=false, downloads=null, local=false;
-let settings={teacher:'',semStart:'2026-09-01',semEnd:'2026-12-31',attDate:'',parityRef:'2026-11-09',parityRefIs:'num'};
+let settings={teacher:'',semStart:'2026-09-01',semEnd:'2026-12-31',attDates:[],workStyle:'separate',parityRef:'2026-11-09',parityRefIs:'num'};
 let courses={};      // id -> course
 let order=[];        // ids
 let cur=null;        // selected course id
@@ -315,7 +322,7 @@ let saving={};       // id -> {timer, busy, again}
 let booted=false;
 let kfk=null;          // знімок розкладу викладачів коледжу (kfk_rozklad.json поруч зі сторінкою)
 const openTools=new Set();   // які розкривні інструменти відкриті
-const draft={schedText:'',sched:null,syl:{},rec:{},subText:'',subDate:'',sub:null,backup:null};
+const draft={attSug:{},schedText:'',sched:null,syl:{},rec:{},subText:'',subDate:'',sub:null,backup:null};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -400,35 +407,48 @@ function generate(c,from){
   }
   return added;
 }
+/* Атестація — позначка att на парі, на якій її проводили (їх може бути кілька за семестр) */
+function attLessons(c){return sorted(c).filter(l=>l.att);}
+function lastUpTo(c,dateISO){const L=sorted(c).filter(l=>l.status!=='cancelled'&&l.date<=dateISO);return L[L.length-1]||null;}
+function markAttOn(c,dateISO){const l=lastUpTo(c,dateISO); if(l) l.att=true; return l;}
+function applyAttDates(c,dates){ c.lessons.forEach(l=>{delete l.att;}); (dates||[]).forEach(d=>markAttOn(c,d)); }
+/* правило коледжу: атестація на останньому занятті місяця, якщо від попередньої атестації було понад 8 занять */
+function suggestAtt(c){
+  const L=sorted(c).filter(l=>l.status!=='cancelled'); const endM=(c.semEnd||settings.semEnd||'').slice(0,7); const out=[]; let cnt=0;
+  L.forEach((l,i)=>{ cnt++; if(l.att){cnt=0;return;} const nx=L[i+1]; const last=!nx||nx.date.slice(0,7)!==l.date.slice(0,7);
+    if(last && l.date.slice(0,7)<endM && cnt>8){ out.push({id:l.id,date:l.date,cnt}); cnt=0; } });
+  return out;
+}
 function numbered(c){let n=0;return sorted(c).map(l=>({l,n:l.status==='cancelled'?null:++n}));}
 function newCourse(f){
   const id=newId();
-  const c=Object.assign({id,title:'Нова дисципліна',groups:'',short:'',semStart:settings.semStart,semEnd:settings.semEnd,attDate:settings.attDate||'',cols:18,rows:20,hours:2,exam:false,
+  const c=Object.assign({id,title:'Нова дисципліна',groups:'',short:'',semStart:settings.semStart,semEnd:settings.semEnd,cols:18,rows:20,hours:2,exam:false,
     parityRef:settings.parityRef,parityRefIs:settings.parityRefIs,schedule:[],plan:[],lessons:[],created:Date.now()+order.length},f||{});
   courses[id]=c; order.push(id); scheduleSave(id); return c;
 }
 
 /* ---------- journal layout ---------- */
 function layout(c){
-  const COLS=Number(c.cols)||18, ROWS=Number(c.rows)||20, att=c.attDate||'';
+  const COLS=Number(c.cols)||18, ROWS=Number(c.rows)||20;
   const spreads=[]; let cols=[], rows=[];
   const flush=()=>{if(cols.length||rows.length) spreads.push({cols,rows}); cols=[];rows=[];};
   const add=(g,row)=>{ if(cols.length+g.length>COLS || (row&&rows.length>=ROWS)) flush(); cols=cols.concat(g); if(row) rows.push(row); };
-  let attDone=!att, n=0;
-  sorted(c).filter(l=>l.status!=='cancelled').forEach(l=>{
-    if(!attDone && l.date>att){ add([{t:'Атест.',k:'att'},{t:'',k:'reta'}]); attDone=true; }
-    n++; const g=[{t:dm(l.date),k:l.status==='done'?'date':'plan'}];
-    if(isWork(l.work)) g.push({t:l.work,k:'work'});
-    add(g,{n,date:dm(l.date),topic:l.topic,hw:l.hw,planned:l.status!=='done'});
+  let n=0;
+  sorted(c).forEach(l=>{
+    if(l.status!=='cancelled'){
+      n++; const g=[{t:dm(l.date),k:l.status==='done'?'date':'plan'}];
+      if(isWork(l.work)){ if(workStyle(c)==='above'){ g[0].w=l.work; g[0].k+=' work'; } else g.push({t:l.work,k:'work'}); }
+      add(g,{n,date:dm(l.date),topic:l.topic,hw:l.hw,planned:l.status!=='done'});
+    }
+    if(l.att) add([{t:'Атест. '+dm(l.date),k:'att'},{t:'',k:'reta'}]);   // атестація й чиста колонка для перездачі
   });
-  if(!attDone) add([{t:'Атест.',k:'att'},{t:'',k:'reta'}]);
   let end=[{t:'Сем.',k:'fin'},{t:'',k:'ret'}]; if(c.exam) end=end.concat([{t:'Іспит',k:'fin'},{t:'',k:'ret'}]); end.push({t:'П',k:'fin'});
   add(end); flush();
   return {spreads,COLS};
 }
 function spreadHTML(c,s,i,COLS){
   let h='<div class="spread"><h3>Розворот '+i+'</h3><div class="lp"><table><tr>';
-  for(let k=0;k<COLS;k++){ const x=s.cols[k]; if(x){ const txt=x.t||'перездача'; const cl=x.k==='reta'?'reta ret':x.k; h+='<td class="'+cl+'"><div>'+esc(txt)+'</div></td>'; } else h+='<td><div></div></td>'; }
+  for(let k=0;k<COLS;k++){ const x=s.cols[k]; if(x){ const txt=x.t||'перездача'; const cl=x.k==='reta'?'reta ret':x.k; h+='<td class="'+cl+'"><div>'+esc(txt)+(x.w?'<b class="wn">'+esc(x.w)+'</b>':'')+'</div></td>'; } else h+='<td><div></div></td>'; }
   h+='</tr><tr class="num">'; for(let k=0;k<COLS;k++) h+='<td>'+(k+1)+'</td>'; h+='</tr></table></div>';
   h+='<div class="rp"><table><tr><th>№</th><th>Дата</th><th>Год</th><th>Тема</th><th>ДЗ</th></tr>';
   s.rows.forEach(r=>{ h+='<tr class="'+(r.planned?'p':'')+'"><td class="c">'+r.n+'</td><td class="c">'+r.date+'</td><td class="c">'+(c.hours||2)+'</td><td>'+esc(r.topic)+'</td><td>'+esc(r.hw)+'</td></tr>'; });
@@ -504,7 +524,7 @@ function renderToday(v){
   overdue.sort((a,b)=>a.l.date<b.l.date?-1:1);
   let h=setupHTML()+'<div class="panel"><h2>Сьогодні й завтра</h2>';
   if(!items.length) h+='<div class="note">За розкладом пар немає. Якщо була заміна, внесіть її нижче або додайте пару у вкладці «Проведені пари».</div>';
-  else h+='<div class="today">'+items.map(({c,l,n})=>'<div class="tcard"><div class="when">'+(l.date===t?'сьогодні':'завтра')+' · '+DOW[parse(l.date).getDay()]+' '+dm(l.date)+(l.pair?' · '+l.pair+' пара':'')+'</div><h3>'+esc(c.title)+' · '+esc(c.groups)+'</h3><div>'+(n?'№'+n+'. ':'')+esc(l.topic)+'</div><div class="row"><span class="pill '+l.status+'">'+stLabel(l.status)+'</span>'+(l.status!=='done'?'<button class="b pri" data-done="'+c.id+'|'+l.id+'">Проведено</button>':'')+(l.status==='planned'?'<button class="b ghost" data-cancel="'+c.id+'|'+l.id+'">Скасовано</button>':'')+'</div></div>').join('')+'</div>';
+  else h+='<div class="today">'+items.map(({c,l,n})=>'<div class="tcard"><div class="when">'+(l.date===t?'сьогодні':'завтра')+' · '+DOW[parse(l.date).getDay()]+' '+dm(l.date)+(l.pair?' · '+l.pair+' пара':'')+'</div><h3>'+esc(c.title)+' · '+esc(c.groups)+'</h3><div>'+(n?'№'+n+'. ':'')+esc(l.topic)+'</div><div class="row"><span class="pill '+l.status+'">'+stLabel(l.status)+'</span>'+(l.att?'<span class="pill att">після пари — атестація</span>':'')+(l.status!=='done'?'<button class="b pri" data-done="'+c.id+'|'+l.id+'">Проведено</button>':'')+(l.status==='planned'?'<button class="b ghost" data-cancel="'+c.id+'|'+l.id+'">Скасовано</button>':'')+'</div></div>').join('')+'</div>';
   h+=tool('t-sub','Внести заміни зі сторінки сайту',subToolHTML());
   h+='</div>';
   if(overdue.length){
@@ -572,6 +592,8 @@ function bindActs(v){
   v.querySelectorAll('[data-cancel]').forEach(b=>b.addEventListener('click',()=>setSt(b.dataset.cancel,'cancelled')));
   v.querySelectorAll('[data-plan]').forEach(b=>b.addEventListener('click',()=>setSt(b.dataset.plan,'planned')));
   v.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>delLesson(b.dataset.del)));
+  v.querySelectorAll('[data-att]').forEach(b=>b.addEventListener('click',()=>{const [cid,id]=b.dataset.att.split('|');const c=courses[cid];const l=c.lessons.find(x=>x.id===id);if(!l)return;
+    if(l.att) delete l.att; else l.att=true; scheduleSave(cid); render(); toast(l.att?'Атестація після пари '+dm(l.date)+': у журналі колонки «Атест.» і перездача':'Атестацію прибрано');}));
 }
 function setSt(key,st){const [cid,lid_]=key.split('|');const c=courses[cid];const l=c.lessons.find(x=>x.id===lid_);if(!l)return;const prev=l.status;l.status=st;
   if(prev==='cancelled'||st==='cancelled') reflow(c);
@@ -598,7 +620,9 @@ function renderLessons(v,c){
       '<input class="wl" value="'+esc(l.work)+'" aria-label="Колонка роботи" placeholder="ПЗ/ЛР">'+
       '<span class="acts">'+(l.status!=='done'?'<button class="b" data-done="'+k+'" title="Проведено" aria-label="Проведено">✓</button>':'<button class="b ghost" data-plan="'+k+'" title="Повернути в план" aria-label="Повернути в план">↺</button>')+
       (l.status!=='cancelled'?'<button class="b ghost" data-cancel="'+k+'" title="Не відбулася" aria-label="Не відбулася">✕</button>':'<button class="b ghost" data-plan="'+k+'" title="Відновити" aria-label="Відновити">↺</button>')+
-      '<button class="b ghost" data-del="'+k+'">Видалити</button></span></div>';
+      '<button class="b ghost att-b" data-att="'+k+'" aria-pressed="'+(!!l.att)+'" title="'+(l.att?'Після цієї пари атестація. Натисніть, щоб прибрати':'Поставити атестацію після цієї пари')+'" aria-label="Атестація після цієї пари">А</button>'+
+      '<button class="b ghost" data-del="'+k+'">Видалити</button></span></div>'+
+      (l.att?'<div class="attsep"><span>Атестація після пари '+dm(l.date)+': у журналі колонка «Атест.» і чиста для перездачі</span><button class="b ghost" data-att="'+k+'">Прибрати</button></div>':'');
   });
   if(!nb.length) h+='<div class="note" style="padding:12px 0">Пар ще немає. Задайте базовий розклад у вкладці «Дисципліна» і натисніть «Дозаповнити за розкладом».</div>';
   h+='</div></div>';
@@ -673,8 +697,8 @@ function renderLayout(v,c){
   const {spreads,COLS}=layout(c);
   let h='<div class="panel"><div class="row" style="justify-content:space-between"><div><h2>Розкладка журналу · '+esc(c.title)+'</h2><div class="sub">Розворотів: '+spreads.length+' · '+COLS+' колонок на лівій сторінці, до '+(c.rows||20)+' рядків на правій</div></div>'+
     ((downloads||local)?'<button class="b pri" id="dl">Зберегти для друку</button>':'')+'</div>'+
-    '<div class="legend"><span>дата</span><span style="background:var(--work)">оцінка за ПЗ/ЛР</span><span style="background:var(--att)">атестація / перездача</span><span style="background:var(--fin)">підсумкові</span><span style="background:var(--plan)">ще за планом</span></div>'+
-    '<div class="note">Практичне чи лабораторне займає дві колонки: дату й колонку оцінки. Після дати атестації стоїть «Атест.» і чиста колонка для перездачі; у кінці «Сем.», перездача'+(c.exam?', «Іспит», перездача':'')+' і «П». Заняття, яке не влазить, переходить на наступний розворот.</div></div>';
+    '<div class="legend"><span>дата</span><span style="background:var(--work)">'+(workStyle(c)==='above'?'день з роботою':'колонка роботи')+'</span><span style="background:var(--att)">атестація / перездача</span><span style="background:var(--fin)">підсумкові</span><span style="background:var(--plan)">ще за планом</span></div>'+
+    '<div class="note">'+(workStyle(c)==='above'?'Практичне чи лабораторне займає одну колонку: номер роботи над датою, оцінка в клітинці того ж дня.':'Практичне чи лабораторне займає дві колонки: дату й наступну, де замість дати номер роботи.')+' Атестація стоїть окремою колонкою «Атест.» одразу після дня, на якому її виставляли, і за нею чиста колонка для перездачі; у кінці «Сем.», перездача'+(c.exam?', «Іспит», перездача':'')+' і «П». Заняття, яке не влазить, переходить на наступний розворот.</div></div>';
   h+=spreads.map((s,i)=>spreadHTML(c,s,i+1,COLS)).join('');
   v.innerHTML=h;
   const b=$('#dl'); if(b) b.addEventListener('click',()=>saveLayout(c));
@@ -698,14 +722,15 @@ function renderCourse(v,c){
    '<div class="sec"><h3>Тематичний план</h3>'+tool('t-syl','Заповнити план із силабусу',sylToolHTML(c))+
    '<div class="note">Один рядок — одне заняття: <span class="mono">позначка | тема | ДЗ</span>. Позначка: Л — лекція, Т — тест, ПЗ1 / ЛР1 / ІЗ — робота з окремою колонкою оцінки. Майбутні пари беруть теми з плану по черзі.</div>'+
    '<textarea id="c-plan" spellcheck="false" aria-label="Тематичний план">'+esc(planText)+'</textarea></div>'+
-   '<div class="sec"><h3>Паперовий журнал</h3><div class="grid2">'+fld('c-att','Атестація до (включно)',c.attDate||'','date')+fld('c-cols','Колонок на лівій сторінці',c.cols||18,'number')+fld('c-rows','Рядків на правій сторінці',c.rows||20,'number')+fld('c-hours','Годин за пару',c.hours||2,'number')+fld('c-short','Назва файлу для друку',c.short||'')+'</div></div>'+
+   '<div class="sec" id="att-sec"></div>'+
+   '<div class="sec"><h3>Паперовий журнал</h3><div class="grid2">'+'<label class="f">Оцінки за ПЗ/ЛР<select id="c-ws"><option value="">як у налаштуваннях ('+(settings.workStyle==='above'?'над датою':'окремий стовпчик')+')</option>'+Object.keys(WS).map(k=>'<option value="'+k+'"'+(c.workStyle===k?' selected':'')+'>'+WS[k]+'</option>').join('')+'</select></label>'+fld('c-cols','Колонок на лівій сторінці',c.cols||18,'number')+fld('c-rows','Рядків на правій сторінці',c.rows||20,'number')+fld('c-hours','Годин за пару',c.hours||2,'number')+fld('c-short','Назва файлу для друку',c.short||'')+'</div></div>'+
    '<details class="tool" id="t-own"'+(own||openTools.has('t-own')?' open':'')+'><summary>Інший семестр або чисельник, ніж у налаштуваннях</summary><div class="tbody"><div class="note">Зазвичай не потрібно: дати й чисельник беруться з «Налаштувань». Змінюйте лише для дисципліни, що йде за іншим графіком.</div><div class="grid2">'+
    fld('c-start','Початок семестру',c.semStart||settings.semStart,'date')+fld('c-end','Кінець семестру',c.semEnd||settings.semEnd,'date')+
    '<label class="f">Чисельник/знаменник: тиждень, що містить<input type="date" id="c-pref" value="'+esc(c.parityRef||settings.parityRef)+'"></label>'+
    '<label class="f">цей тиждень —<select id="c-pis"><option value="num"'+((c.parityRefIs||'num')==='num'?' selected':'')+'>чисельник</option><option value="den"'+(c.parityRefIs==='den'?' selected':'')+'>знаменник</option></select></label></div></div></details>'+
    '<div class="row"><button class="b pri" id="saveCourse">Зберегти дисципліну</button></div>'+
    '<div class="danger"><button class="b ghost" id="delCourse">Видалити дисципліну</button></div></div>';
-  v.innerHTML=h; bindTools(v); bindSyl(v,c);
+  v.innerHTML=h; bindTools(v); bindSyl(v,c); drawAtt(c);
   const sched=c.schedule?c.schedule.map(r=>Object.assign({},r)):[];
   const drawS=()=>{$('#sched').innerHTML=sched.map((r,i)=>'<div class="r"><select aria-label="День" data-i="'+i+'" data-f="dow">'+[1,2,3,4,5,6].map(d=>'<option value="'+d+'"'+(Number(r.dow)===d?' selected':'')+'>'+DOWF[d]+'</option>').join('')+'</select><select aria-label="Пара" data-i="'+i+'" data-f="pair">'+[1,2,3,4,5,6,7].map(p=>'<option value="'+p+'"'+(Number(r.pair)===p?' selected':'')+'>'+p+' пара</option>').join('')+'</select><select aria-label="Тиждень" data-i="'+i+'" data-f="parity">'+Object.keys(PAR).map(k=>'<option value="'+k+'"'+(r.parity===k?' selected':'')+'>'+PAR[k]+'</option>').join('')+'</select><button class="b ghost" data-rm="'+i+'">Прибрати</button></div>').join('')||'<div class="note">Немає рядків розкладу.</div>';
     $('#sched').querySelectorAll('select').forEach(s=>s.addEventListener('change',()=>{sched[s.dataset.i][s.dataset.f]=s.dataset.f==='parity'?s.value:Number(s.value);}));
@@ -714,8 +739,8 @@ function renderCourse(v,c){
   $('#addSched').addEventListener('click',()=>{sched.push({dow:1,pair:1,parity:'all'});drawS();});
   $('#saveCourse').addEventListener('click',()=>{
     c.title=$('#c-title').value.trim()||'Без назви'; c.groups=$('#c-groups').value.trim(); c.short=$('#c-short').value.trim();
-    c.semStart=$('#c-start').value; c.semEnd=$('#c-end').value; c.attDate=$('#c-att').value;
-    c.cols=Number($('#c-cols').value)||18; c.rows=Number($('#c-rows').value)||20; c.hours=Number($('#c-hours').value)||2;
+    c.semStart=$('#c-start').value; c.semEnd=$('#c-end').value;
+    c.workStyle=$('#c-ws').value; c.cols=Number($('#c-cols').value)||18; c.rows=Number($('#c-rows').value)||20; c.hours=Number($('#c-hours').value)||2;
     c.parityRef=$('#c-pref').value||settings.parityRef; c.parityRefIs=$('#c-pis').value; c.exam=$('#c-exam').checked; c.schedule=sched;
     const oldPlan=JSON.stringify(c.plan||[]);
     c.plan=$('#c-plan').value.split('\n').map(s=>s.trim()).filter(Boolean).map(s=>{const p=s.split('|').map(x=>x.trim());return {label:p[0]||'Л',title:p[1]||p[0],hw:p[2]||''};});
@@ -725,6 +750,24 @@ function renderCourse(v,c){
   $('#delCourse').addEventListener('click',async e=>{const b=e.currentTarget;if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Натисніть ще раз, щоб видалити назавжди';return;}
     try{await store.del(c.id);}catch(err){toast('Не вдалося видалити');return;}
     delete courses[c.id]; order=order.filter(x=>x!==c.id); cur=order[0]||null; setTab(order.length?'courses':'today','lessons'); toast('Дисципліну видалено');});
+}
+function drawAtt(c){
+  const el=$('#att-sec'); if(!el) return;
+  const nb=numbered(c); const num=id=>{const x=nb.find(o=>o.l.id===id);return x&&x.n;};
+  const A=attLessons(c); const sug=draft.attSug[c.id];
+  let h='<h3>Атестації</h3><div class="note">Атестація — окрема колонка в журналі одразу після дня, на якому її виставляли, а за нею чиста колонка для перездачі. За семестр їх може бути кілька. Поставити атестацію після потрібної пари можна й кнопкою «А» у списку пар.</div>';
+  h+=A.length?'<div class="todo">'+A.map((l,i)=>'<div><span><b>Атестація '+(i+1)+'</b> · після пари '+DOW[parse(l.date).getDay()]+' '+dm(l.date)+(num(l.id)?' (№'+num(l.id)+')':'')+(l.status==='cancelled'?' · <span class="op-cancel">пару скасовано</span>':'')+'</span><button class="b ghost" data-unatt="'+l.id+'">Прибрати</button></div>').join('')+'</div>':'<div class="sub">Атестацій ще не позначено.</div>';
+  h+='<div class="row" style="align-items:flex-end"><label class="f" style="width:11rem">День атестації<input type="date" id="att-date"></label><button class="b" id="att-add">Додати атестацію</button><button class="b ghost" id="att-sug">Запропонувати за правилом</button></div>';
+  if(sug){ h+=sug.length?'<div class="note">Правило: атестація після останнього заняття місяця, якщо від попередньої атестації було понад 8 занять. Вирішуєте ви: цього року, наприклад, атестація була одна, у жовтні, за два місяці.</div><div class="prev">'+sug.map((x,i)=>'<label><input type="checkbox" data-sg="'+i+'" checked><span>після пари '+DOW[parse(x.date).getDay()]+' '+dm(x.date)+' (№'+num(x.id)+') · занять від попередньої атестації: '+x.cnt+'</span></label>').join('')+'</div><div class="row"><button class="b pri" id="att-sug-ok">Позначити вибрані</button><button class="b ghost" id="att-sug-x">Сховати</button></div>'
+    :'<div class="note">За правилом нових атестацій не виходить: ні в одному місяці від попередньої атестації не набралось понад 8 занять.</div>'; }
+  el.innerHTML=h;
+  const save=()=>{draft.attSug[c.id]=null; scheduleSave(c.id); drawAtt(c);};
+  el.querySelectorAll('[data-unatt]').forEach(b=>b.addEventListener('click',()=>{const l=c.lessons.find(x=>x.id===b.dataset.unatt); if(l) delete l.att; save(); toast('Атестацію прибрано');}));
+  $('#att-add').addEventListener('click',()=>{const d=$('#att-date').value; if(!d){toast('Оберіть день атестації');return;}
+    const l=markAttOn(c,d); if(!l){toast('До цієї дати в журналі немає жодної пари');return;} save(); toast(l.date===d?'Атестація після пари '+dm(d):'На '+dm(d)+' пари немає: атестація після останньої пари перед цим, '+dm(l.date));});
+  $('#att-sug').addEventListener('click',()=>{draft.attSug[c.id]=suggestAtt(c); drawAtt(c);});
+  const ok=$('#att-sug-ok'); if(ok) ok.addEventListener('click',()=>{ el.querySelectorAll('[data-sg]').forEach(cb=>{ if(!cb.checked) return; const x=draft.attSug[c.id][Number(cb.dataset.sg)]; const l=c.lessons.find(y=>y.id===x.id); if(l) l.att=true; }); save(); toast('Атестації позначено'); });
+  const sx=$('#att-sug-x'); if(sx) sx.addEventListener('click',()=>{draft.attSug[c.id]=null; drawAtt(c);});
 }
 function fld(id,label,val,type){return '<label class="f">'+label+'<input id="'+id+'" type="'+(type||'text')+'" value="'+esc(val)+'"></label>';}
 
@@ -801,20 +844,21 @@ function bindSyl(v,c){
 /* ----- Налаштування ----- */
 function renderSettings(v){
   const s=settings;
-  let h='<div class="panel"><h2>1. Семестр</h2><div class="note">Від цих дат будуються пари всіх дисциплін. Для чисельника оберіть будь-який тиждень і вкажіть, чим він є.</div><div class="grid2">'+
-    fld('s-start','Початок семестру',s.semStart,'date')+fld('s-end','Кінець семестру',s.semEnd,'date')+fld('s-att','Атестація до (включно)',s.attDate,'date')+
+  let h='<div class="panel"><h2>1. Семестр і журнал</h2><div class="note">Від цих дат будуються пари всіх дисциплін. Атестація стане після останньої пари кожної дисципліни до цього дня включно; окремі дисципліни можна виправити в «План і розклад». Для чисельника оберіть будь-який тиждень і вкажіть, чим він є.</div><div class="grid2">'+
+    fld('s-start','Початок семестру',s.semStart,'date')+fld('s-end','Кінець семестру',s.semEnd,'date')+'<label class="f">Дні атестацій (через кому)<input id="s-att" placeholder="30.10" value="'+esc((s.attDates||[]).map(dm).join(', '))+'"></label>'+
     '<label class="f">Чисельник/знаменник: тиждень, що містить<input type="date" id="s-pref" value="'+esc(s.parityRef)+'"></label>'+
     '<label class="f">цей тиждень —<select id="s-pis"><option value="num"'+(s.parityRefIs==='num'?' selected':'')+'>чисельник</option><option value="den"'+(s.parityRefIs==='den'?' selected':'')+'>знаменник</option></select></label></div>'+
-    '<div class="row"><button class="b pri" id="s-save">Зберегти семестр</button>'+(order.length?'<label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="s-all"> застосувати до всіх дисциплін</label>':'')+'</div></div>';
+    '<label class="f" style="max-width:34rem">Як ви записуєте практичні й лабораторні в журналі<select id="s-ws">'+Object.keys(WS).map(k=>'<option value="'+k+'"'+((s.workStyle||'separate')===k?' selected':'')+'>'+WS[k]+'</option>').join('')+'</select></label>'+
+    '<div class="row"><button class="b pri" id="s-save">Зберегти</button>'+(order.length?'<label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="s-all"> застосувати до всіх дисциплін (атестації в них буде замінено цими днями)</label>':'')+'</div></div>';
   h+='<div class="panel" id="t-sched"><h2>2. Ваш розклад</h2>'+schedToolHTML()+'</div>';
   h+='<div class="panel"><h2>Резервна копія</h2><div class="note">Один файл з усіма дисциплінами, планами й парами. Ним можна перенести журнал на інший пристрій або відновити записи після помилки.</div><div class="row">'+((downloads||local)?'<button class="b" id="s-exp">Завантажити копію</button>':'')+'<label class="b" style="cursor:pointer">Відновити з файлу<input type="file" id="s-imp" accept=".json,application/json" hidden></label></div>'+backupHTML()+'</div>';
   h+='<div class="panel" id="about"><h2>Про застосунок і дані</h2>'+aboutHTML()+'</div>';
   v.innerHTML=h; bindTools(v); bindSched(v);
   $('#s-save').addEventListener('click',()=>{
-    s.semStart=$('#s-start').value||s.semStart; s.semEnd=$('#s-end').value||s.semEnd; s.attDate=$('#s-att').value; s.parityRef=$('#s-pref').value||s.parityRef; s.parityRefIs=$('#s-pis').value;
+    s.semStart=$('#s-start').value||s.semStart; s.semEnd=$('#s-end').value||s.semEnd; s.attDates=P.parseDateList($('#s-att').value).map(x=>x.date).sort(); s.workStyle=$('#s-ws').value; s.parityRef=$('#s-pref').value||s.parityRef; s.parityRefIs=$('#s-pis').value;
     scheduleSave('_settings');
-    const all=$('#s-all'); if(all&&all.checked){ order.forEach(id=>{const c=courses[id]; c.semStart=s.semStart;c.semEnd=s.semEnd;c.attDate=s.attDate;c.parityRef=s.parityRef;c.parityRefIs=s.parityRefIs;scheduleSave(id);}); }
-    toast('Семестр збережено');
+    const all=$('#s-all'); if(all&&all.checked){ order.forEach(id=>{const c=courses[id]; c.semStart=s.semStart;c.semEnd=s.semEnd;applyAttDates(c,s.attDates);c.parityRef=s.parityRef;c.parityRefIs=s.parityRefIs;scheduleSave(id);}); }
+    toast('Збережено');
   });
   const ex=$('#s-exp'); if(ex) ex.addEventListener('click',async()=>{
     const data=JSON.stringify({app:'zhurnal-vykladacha',version:1,saved:new Date().toISOString(),settings,courses:order.map(id=>courses[id])},null,1);
@@ -868,7 +912,7 @@ function bindSched(v){
       if(!v.querySelector('[data-ci="'+i+'"]').checked) return;
       const title=v.querySelector('[data-ct="'+i+'"]').value.trim()||x.subject, groups=v.querySelector('[data-cg="'+i+'"]').value.trim()||x.groups, target=v.querySelector('[data-cs="'+i+'"]').value;
       const slots=x.slots.map(s=>({dow:s.dow,pair:s.pair,parity:s.parity}));
-      if(target==='new'){ const c=newCourse({title,groups,schedule:slots,aud:x.aud||''}); if(gen) generate(c,c.semStart); made++; cur=cur||c.id; }
+      if(target==='new'){ const c=newCourse({title,groups,schedule:slots,aud:x.aud||''}); if(gen){ generate(c,c.semStart); applyAttDates(c,settings.attDates); } made++; cur=cur||c.id; }
       else { const c=courses[target]; c.schedule=slots; if(rebuild){ const t=todayISO(); c.lessons=c.lessons.filter(l=>!(l.status==='planned'&&l.date>t&&!l.custom)); generate(c,addDays(t,1)); reflow(c); } scheduleSave(c.id); upd++; }
     });
     draft.sched=null; draft.schedText=''; draft.schedFrom=''; if(!cur) cur=order[0]; setTab('today');
@@ -914,11 +958,14 @@ const kfkLoad=Promise.race([
   booted=true;
   if(!local&&(!db||!uid)){ setStatus('офлайн'); render(); return; }
   try{
-    const docs=await store.all();
+    const docs=await store.all(); const migrated=[];
     docs.forEach(({id,data})=>{
       if(id==='_settings'){ if(data) settings=Object.assign(settings,data); return; }
       if(!data||!Array.isArray(data.lessons)) return;
-      const c=JSON.parse(JSON.stringify(data)); c.id=id; courses[id]=c; });
+      const c=JSON.parse(JSON.stringify(data)); c.id=id; courses[id]=c;
+      if(c.attDate&&!c.attMig){ markAttOn(c,c.attDate); c.attMig=true; migrated.push(id); } });
+    if(settings.attDate&&!(settings.attDates||[]).length){ settings.attDates=[settings.attDate]; migrated.push('_settings'); }
+    migrated.forEach(id=>scheduleSave(id));
     order=Object.keys(courses).sort((a,b)=>(courses[a].created||0)-(courses[b].created||0));
     let saved=null; try{saved=localStorage.getItem('zh_cur');}catch(e){}
     cur=order.includes(saved)?saved:order[0]||null;
