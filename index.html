@@ -387,9 +387,27 @@ function reflow(c,start){
     if(l.status==='done') return;
     if(l.status==='cancelled'){ l.planIdx=null; return; }
     if(l.custom) return;
-    const p=plan[idx];
-    l.topic=p?p.title:'Резерв / консультація'; l.hw=p?(p.hw||''):''; l.work=p&&isWork(p.label)?p.label:''; l.planIdx=p?idx:null; idx++;
+    const p=plan[idx]; idx++;
+    if(p){ l.topic=p.title; l.hw=p.hw||''; l.work=isWork(p.label)?p.label:''; l.planIdx=idx-1; return; }
+    // план скінчився: тему, яку викладач вписав сам (не з плану), лишаємо; решта — резерв
+    if(typeof l.planIdx!=='number' && l.topic && !/^Резерв/i.test(l.topic)) return;
+    if(!/^Резерв/i.test(l.topic||'')) l.topic='Резерв / консультація'; l.hw=''; l.work=''; l.planIdx=null;
   });
+}
+/* З якого заняття нового плану продовжувати: за номерами робіт у темах проведених пар («ЛР5», «Л14–Л15», «ПЗ6»),
+   бо проведені пари рідко збігаються з нумерацією силабусу один до одного. Інакше — проведено + 1. */
+function suggestStart(c,plan){
+  const code=t=>{const m=String(t).match(/^(ЛР|ПЗ|ІЗ|Л)\s*(\d+)/i); return m?m[1].toUpperCase()+m[2]:null;};
+  const codes=plan.map(p=>code(p.title)); let best=-1;
+  c.lessons.forEach(l=>{ if(l.status!=='done') return;
+    (String(l.topic||'').toUpperCase().match(/(?<![А-ЯІЇЄҐA-Z])(ЛР|ПЗ|ІЗ|Л)\s*\d+/g)||[]).forEach(t=>{const i=codes.indexOf(t.replace(/\s+/g,'')); if(i>best) best=i;}); });
+  if(best>=0) return {start:best+2,by:codes[best]};
+  return {start:Math.min(c.lessons.filter(l=>l.status==='done').length+1,plan.length+1)};
+}
+function sylDiff(c,plan,start){
+  const x=JSON.parse(JSON.stringify(c)); x.plan=plan; reflow(x,start);
+  const old={}; c.lessons.forEach(l=>{old[l.id]=l.topic||'';});
+  return sorted(x).filter(l=>l.status!=='done'&&l.status!=='cancelled').map(l=>({date:l.date,old:old[l.id],neu:l.topic||'',changed:old[l.id]!==(l.topic||'')}));
 }
 function generate(c,from){
   const start=parse(from||todayISO()); const end=parse(c.semEnd||settings.semEnd||'2026-12-31');
@@ -869,17 +887,24 @@ function sylToolHTML(c){
   if(!d.sems.length) return h+'<div class="note">Не знайшов пунктів «Л 1.», «ПЗ 1.» у розділі 7.1. Перевірте, що це силабус єдиної форми, або вставте потрібний шматок тексту вручну.</div>';
   const si=Math.min(d.semIdx||0,d.sems.length-1); const sem=d.sems[si]; const plan=P.planFromSemester(sem);
   const cnt=k=>sem.items.filter(i=>i.kind===k).length; const done=c.lessons.filter(l=>l.status==='done').length; const total=c.lessons.filter(l=>l.status!=='cancelled').length;
+  const sug=suggestStart(c,plan); const st=Math.max(1,Math.min(d.start||sug.start,plan.length+1));
   h+='<div class="grid2"><label class="f">Семестр<select id="syl-sem">'+d.sems.map((s,i)=>'<option value="'+i+'"'+(i===si?' selected':'')+'>'+(s.n?'Семестр '+s.n:'Без семестру')+': '+P.planFromSemester(s).length+' занять</option>').join('')+'</select></label>'+
-    '<label class="f">Майбутні пари почати з заняття №<input type="number" id="syl-start" min="1" max="'+plan.length+'" value="'+Math.min(done+1,plan.length)+'"></label></div>'+
-    '<div class="sub">Лекцій '+cnt('Л')+', практичних '+cnt('ПЗ')+', лабораторних '+cnt('ЛР')+' · '+plan.length+' занять = '+(plan.length*(c.hours||2))+' год. У журналі зараз '+total+' пар, із них проведено '+done+'.</div>'+
-    '<div class="prev">'+plan.map((p,i)=>'<div class="pl"><span class="mono sub">'+(i+1)+'</span><span>'+esc(p.title)+'</span><span class="mono sub">'+esc(p.label==='Л'?'':p.label)+'</span></div>').join('')+'</div>'+
-    '<div class="row"><button class="b pri" id="syl-apply">Замінити тематичний план</button><span class="sub">Проведені пари й теми, вписані вручну, не зміняться.</span></div>';
+    '<label class="f">Майбутні пари почати з заняття №<input type="number" id="syl-start" min="1" max="'+(plan.length+1)+'" value="'+st+'"></label></div>'+
+    '<div class="sub">Лекцій '+cnt('Л')+', практичних '+cnt('ПЗ')+', лабораторних '+cnt('ЛР')+' · '+plan.length+' занять = '+(plan.length*(c.hours||2))+' год. У журналі зараз '+total+' пар, із них проведено '+done+'.'+
+      (sug.by&&!d.start?' Остання проведена робота за силабусом — '+esc(sug.by)+' (№'+(sug.start-1)+'), тому продовжую з №'+sug.start+'.':'')+'</div>'+
+    '<div class="prev">'+plan.map((p,i)=>'<div class="pl"'+(i+1<st?' style="opacity:.55"':'')+'><span class="mono sub">'+(i+1)+'</span><span>'+esc(p.title)+'</span><span class="mono sub">'+esc(p.label==='Л'?'':p.label)+'</span></div>').join('')+'</div>';
+  const fut=sylDiff(c,plan.map(p=>({label:p.label,title:p.title,hw:p.hw})),st-1); const ch=fut.filter(x=>x.changed).length;
+  h+='<h3 style="margin-top:12px">Що станеться з майбутніми парами</h3>'+
+    (st>plan.length?'<div class="note">Усі заняття цього семестру за силабусом уже пройдено. Майбутні пари збережуть теми, які в них є; порожні стануть «Резерв».</div>':'')+
+    (fut.length?'<div class="sub">Зміниться тем: '+ch+' з '+fut.length+'. Теми, вписані вручну, понад план лишаються.</div><div class="prev">'+fut.map(x=>'<div class="pl"><span class="mono sub">'+dm(x.date)+'</span><span>'+(x.changed?'<s class="sub">'+esc(x.old)+'</s><br>'+esc(x.neu):esc(x.old)+' <span class="sub">· без змін</span>')+'</span><span></span></div>').join('')+'</div>':'<div class="sub">Майбутніх пар немає.</div>')+
+    '<div class="row"><button class="b pri" id="syl-apply">Записати план і оновити майбутні пари</button><button class="b" id="syl-plan">Лише записати план</button></div>'+
+    '<div class="sub">«Лише записати план» нічого не змінює в парах: план знадобиться для нових пар і паперового журналу. Проведені пари не змінюються в жодному разі.</div>';
   return h;
 }
 function bindSyl(v,c){
   const d=draft.syl[c.id]=draft.syl[c.id]||{};
   const pickSem=sems=>{ const autumn=new Date().getMonth()>=7; const i=sems.findIndex(s=>s.n&&(s.n%2===1)===autumn); return i<0?0:i; };
-  const done=(sems,status)=>{d.sems=sems;d.semIdx=pickSem(sems);d.status=status;openTools.add('t-syl');render();};
+  const done=(sems,status)=>{d.sems=sems;d.semIdx=pickSem(sems);d.start=null;d.status=status;openTools.add('t-syl');render();};
   $('#syl-text').addEventListener('input',e=>{d.paste=e.target.value;});
   $('#syl-file').addEventListener('change',async e=>{
     const f=e.target.files&&e.target.files[0]; if(!f) return; const st=$('#syl-st'); st.textContent='читаю '+f.name+'…';
@@ -893,11 +918,15 @@ function bindSyl(v,c){
     }catch(err){ st.textContent=(err&&err.message)||'Не вдалося прочитати файл'; }
   });
   $('#syl-parse').addEventListener('click',()=>{const t=$('#syl-text').value; if(!t.trim()){toast('Вставте текст розділу 7.1');return;} done(P.parseSyllabus(t),'з вставленого тексту');});
-  const ss=$('#syl-sem'); if(ss) ss.addEventListener('change',()=>{d.semIdx=Number(ss.value);render();});
+  const ss=$('#syl-sem'); if(ss) ss.addEventListener('change',()=>{d.semIdx=Number(ss.value);d.start=null;render();});
+  const si=$('#syl-start'); if(si) si.addEventListener('change',()=>{d.start=Number(si.value)||1;render();});
+  const curPlan=()=>{const sem=d.sems[Math.min(d.semIdx||0,d.sems.length-1)]; return P.planFromSemester(sem).map(p=>({label:p.label,title:p.title,hw:p.hw}));};
   const ap=$('#syl-apply'); if(ap) ap.addEventListener('click',()=>{
-    const sem=d.sems[d.semIdx||0]; const plan=P.planFromSemester(sem).map(p=>({label:p.label,title:p.title,hw:p.hw}));
-    const start=Math.max(1,Math.min(Number($('#syl-start').value)||1,plan.length))-1;
-    c.plan=plan; reflow(c,start); delete draft.syl[c.id]; openTools.delete('t-syl'); scheduleSave(c.id); render(); toast('План замінено: '+plan.length+' занять');
+    const plan=curPlan(); const start=Math.max(1,Math.min(Number($('#syl-start').value)||1,plan.length+1))-1;
+    c.plan=plan; reflow(c,start); delete draft.syl[c.id]; openTools.delete('t-syl'); scheduleSave(c.id); render(); toast('План записано ('+plan.length+' занять), майбутні пари оновлено');
+  });
+  const po=$('#syl-plan'); if(po) po.addEventListener('click',()=>{
+    c.plan=curPlan(); delete draft.syl[c.id]; openTools.delete('t-syl'); scheduleSave(c.id); render(); toast('План записано ('+c.plan.length+' занять). Пари не змінено');
   });
 }
 
